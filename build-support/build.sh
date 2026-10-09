@@ -17,8 +17,10 @@ COMMON=("$AUDIO_SOURCE/protocol.c" "$AUDIO_SOURCE/vendor/cJSON.c")
 gcc -std=c99 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer "$AUDIO_SOURCE/broker.c" "$AUDIO_SOURCE/framing.c" "${COMMON[@]}" -lm -o "$AUDIO_BUILD/tests/broker-host"
 gcc -std=c99 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer "$AUDIO_SOURCE/tests/unit.c" "$AUDIO_SOURCE/latency.c" "$AUDIO_SOURCE/framing.c" "$AUDIO_SOURCE/ring.c" "${COMMON[@]}" -pthread -lm -o "$AUDIO_BUILD/tests/unit"
 gcc -std=c99 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer "$AUDIO_SOURCE/tests/shared_test.c" "$AUDIO_SOURCE/shared.c" "$AUDIO_SOURCE/ring.c" "${COMMON[@]}" -pthread -lm -o "$AUDIO_BUILD/tests/shared-unit"
+gcc -std=c99 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer -I"$AUDIO_SOURCE/tests/aaudio-stub" -Ddlsym=aaudio_policy_test_lookup "$AUDIO_SOURCE/tests/aaudio_policy_test.c" "$AUDIO_SOURCE/native/aaudio_policy.c" -pthread -o "$AUDIO_BUILD/tests/aaudio-policy-unit"
+"$AUDIO_BUILD/tests/aaudio-policy-unit" > "$AUDIO_BUILD/tests/aaudio-policy-unit.log" 2>&1
 "$AUDIO_BUILD/tests/shared-unit" > "$AUDIO_BUILD/tests/shared-unit.log" 2>&1
-"$AUDIO_NDK/aarch64-linux-android35-clang" "${CFLAGS[@]}" -fPIC -shared -Wl,-z,max-page-size=16384 "$AUDIO_SOURCE/native/aaudio_backend.c" "$AUDIO_SOURCE/shared.c" "$AUDIO_SOURCE/ring.c" "${COMMON[@]}" -laaudio -llog -ldl -lm -o "$AUDIO_BUILD/android/jni/lib/arm64-v8a/liblinux_audio.so"
+"$AUDIO_NDK/aarch64-linux-android35-clang" "${CFLAGS[@]}" -fPIC -shared -Wl,-z,max-page-size=16384 "$AUDIO_SOURCE/native/aaudio_backend.c" "$AUDIO_SOURCE/native/aaudio_policy.c" "$AUDIO_SOURCE/shared.c" "$AUDIO_SOURCE/ring.c" "${COMMON[@]}" -laaudio -llog -ldl -lm -o "$AUDIO_BUILD/android/jni/lib/arm64-v8a/liblinux_audio.so"
 "$AUDIO_BUILD/tests/unit" > "$AUDIO_BUILD/tests/unit.log" 2>&1
 python3 "$AUDIO_SOURCE/tests/broker.py" "$AUDIO_BUILD/tests/broker-host" > "$AUDIO_BUILD/tests/broker.log" 2>&1
 python3 "$AUDIO_SOURCE/tests/desktop.py" "$AUDIO_SOURCE" > "$AUDIO_BUILD/tests/desktop.log" 2>&1

@@ -116,7 +116,7 @@ final class Devices
 			String format = "f32le";
 			if (profile.equals("headset"))
 				format = "s16le";
-			JSONObject descriptor = new JSONObject().put("key", key).put("group", group).put("name", name).put("direction", direction).put("android_id", device.getId()).put("type", device.getType()).put("profile", profile).put("rate", rate).put("channels", channels).put("format", format).put("clock_driver", true).put("shared_pcm", true).put("shared_pcm_owner", "android").put("available", available).put("reason", available ? "" : "Android permission required");
+			JSONObject descriptor = new JSONObject().put("key", key).put("group", group).put("name", name).put("direction", direction).put("android_id", device.getId()).put("type", device.getType()).put("profile", profile).put("rate", rate).put("channels", channels).put("format", format).put("clock_driver", true).put("shared_pcm", true).put("shared_pcm_owner", "android").put("mmap_preference", true).put("available", available).put("reason", available ? "" : "Android permission required");
 			String resource = "playback.fast";
 			if (profile.equals("stereo"))
 				resource = "playback.buffered";

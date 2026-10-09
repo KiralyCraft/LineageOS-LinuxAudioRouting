@@ -44,6 +44,7 @@ typedef struct
 	transport_event_t event;
 	void *context;
 } transport_t;
+uint8_t transport_shared_requested(const cJSON *__device);
 int32_t transport_start(transport_t *__transport, control_t *__control, const cJSON *__device, uint64_t __generation, transport_event_t __event, void *__context);
 void *transport_shared_worker(void *__context);
 void transport_cancel_capture(transport_t *__transport);

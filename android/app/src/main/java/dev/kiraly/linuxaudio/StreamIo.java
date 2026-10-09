@@ -30,6 +30,7 @@ final class StreamIo implements AutoCloseable, Runnable
 	final boolean headset;
 	final boolean writeCredit;
 	final boolean sharedPcm;
+	final boolean preferMmap;
 	private long nativeHandle;
 	final boolean presentationClock;
 	private PlaybackBuffer playbackBuffer;
@@ -87,6 +88,7 @@ final class StreamIo implements AutoCloseable, Runnable
 		capture = device.getString("direction").equals("input");
 		captureSource = device.optInt("capture_source", MediaRecorder.AudioSource.UNPROCESSED);
 		writeCredit = !capture && request.optBoolean("write_credit", false);
+		preferMmap = request.optBoolean("prefer_mmap", true);
 		sharedPcm = request.optBoolean("shared_pcm", false) && request.optString("shared_pcm_owner").equals("android");
 		// MMAP Bluetooth timestamps have not been calibrated to acoustic output.
 		presentationClock = !capture && request.optBoolean("presentation_clock", false) && (!sharedPcm || (selected.getType() != AudioDeviceInfo.TYPE_BLUETOOTH_A2DP && selected.getType() != AudioDeviceInfo.TYPE_BLUETOOTH_SCO));
@@ -126,7 +128,7 @@ final class StreamIo implements AutoCloseable, Runnable
 				throw new IOException("Stream was cancelled during preparation");
 			if (sharedPcm)
 			{
-				nativeHandle = NativeAudio.create(selected.getId(), rate, channels, sampleBytes, capture, captureSource, headset, epoch, presentationClock, service.getPackageName());
+				nativeHandle = NativeAudio.create(selected.getId(), rate, channels, sampleBytes, capture, captureSource, headset, epoch, presentationClock, preferMmap, service.getPackageName());
 			}
 			else if (capture)
 			{
@@ -221,7 +223,7 @@ final class StreamIo implements AutoCloseable, Runnable
 		if (device != selected.getId() || !live)
 			throw new IOException("Native audio route lost");
 		verified = true;
-		android.util.Log.i("LinuxAudio", "Shared PCM AAudio stream=" + id + " device=" + device + " mmap=" + mmap);
+		android.util.Log.i("LinuxAudio", "Shared PCM AAudio stream=" + id + " device=" + device + " prefer_mmap=" + preferMmap + " mmap=" + mmap);
 		service.streamRoute(this, device);
 	}
 

@@ -123,3 +123,30 @@ sends descriptors. Installed-helper tests passed for playback, all four micropho
 speaker/stereo streams and return from headset mode. See
 `diagnostics/android-routing/live-017-20261009.json`; audible quality, game latency,
 calls/unplug and long-duration behavior remain separate acceptance checks.
+
+### 0.1.8 default-device MMAP preference
+
+The bridge follows PipeWire's effective default output and input independently.
+Only those two endpoints request AAudio AUTO MMAP; secondary routes request
+legacy AAudio while retaining low-latency mode. Selection remains in the normal
+Linux sound settings. Changing a default retires and reopens affected Android
+streams without disconnecting Linux applications or rebuilding their nodes;
+a brief audio interruption can occur during that handoff.
+
+This is priority, not a guarantee: Android still decides whether the selected
+route, format and available hardware support MMAP. This phone has one MMAP output
+profile. Its active vendor policy includes Bluetooth stereo but excludes SCO
+headset playback from that profile. Capture has its own policy and is checked
+independently. MMAP also does not remove Bluetooth codec/headset buffering.
+
+The helper serializes its AAudio opens, temporarily selects its process-local
+AAudio MMAP policy and restores the previous policy afterwards. If those optional
+exports are absent, secondary routes use the public non-low-latency mode to avoid
+MMAP. No Android system property, vendor audio policy or codec selection changes.
+Older helpers keep their previous behavior; older clients without a preference
+request keep AUTO. The legacy socket backend remains unchanged. Automated graph
+and policy tests are separate from the installed-device MMAP results.
+
+See `diagnostics/android-routing/MMAP-PREFERENCE-20261010.md` for the policy
+evidence, live test gate, and a pre-existing intermittent short-file graph
+startup/drain failure reproduced with both 0.1.7 and the candidate.

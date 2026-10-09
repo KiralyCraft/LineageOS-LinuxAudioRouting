@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "include/transport.h"
 #include "include/latency.h"
+#include "include/preferences.h"
 #include <pipewire/pipewire.h>
 #include <spa/param/audio/format-utils.h>
 #include <spa/param/buffers.h>
@@ -44,6 +45,8 @@ typedef struct
 	int32_t startupFailed;
 	uint8_t present;
 	uint8_t opened;
+	uint8_t mmapPreferred;
+	uint8_t openedMmapPreferred;
 	uint8_t capture;
 	uint8_t previouslyAvailable;
 	uint8_t previouslyBusy;
@@ -62,6 +65,7 @@ typedef struct
 struct pipewire
 {
 	control_t control;
+	preferences_t preferences;
 	struct pw_thread_loop *loop;
 	struct pw_context *context;
 	struct pw_core *core;
@@ -709,6 +713,9 @@ static void _pipewire_clock(pipewire_endpoint_t *__endpoint)
 
 static void _pipewire_reconcile(pipewire_t *__owner, const cJSON *__inventory)
 {
+	char _defaultSink[256];
+	char _defaultSource[256];
+	preferences_snapshot(&__owner->preferences, _defaultSink, sizeof(_defaultSink), _defaultSource, sizeof(_defaultSource));
 	uint64_t _generation = protocol_number(__inventory, "generation", 0);
 	uint8_t _suspended = protocol_boolean(__inventory, "suspended");
 	for (size_t _index = 0; _index < __owner->count; ++_index)
@@ -751,6 +758,24 @@ static void _pipewire_reconcile(pipewire_t *__owner, const cJSON *__inventory)
 	for (size_t _index = 0; _index < __owner->count; ++_index)
 	{
 		pipewire_endpoint_t *_endpoint = __owner->endpoints[_index];
+		const char *_default = _defaultSink;
+		if (_endpoint->capture)
+		{
+			_default = _defaultSource;
+		}
+		char _nodeName[128];
+		snprintf(_nodeName, sizeof(_nodeName), "linux-audio.%s", _endpoint->key);
+		uint8_t _preferred = strcmp(_default, _nodeName) == 0;
+		uint8_t _mmapControl = transport_shared_requested(_endpoint->device) && protocol_boolean(_endpoint->device, "mmap_preference");
+		uint8_t _policyChanged = _mmapControl && _preferred != _endpoint->mmapPreferred;
+		_endpoint->mmapPreferred = _preferred;
+		protocol_set_boolean(_endpoint->device, "prefer_mmap", _preferred);
+		if (_policyChanged)
+		{
+			_endpoint->failed = 0;
+			_endpoint->failure[0] = '\0';
+		}
+		uint8_t _reopen = _mmapControl && _endpoint->openedMmapPreferred != _preferred;
 		uint64_t _activation = __atomic_load_n(&_endpoint->activationSerial, __ATOMIC_ACQUIRE);
 		uint8_t _busy = strlen(protocol_string(_endpoint->device, "busy")) != 0;
 		if (_activation != _endpoint->observedActivation || (_endpoint->previouslyAvailable == 0 && _endpoint->present != 0) || (_endpoint->previouslyBusy != 0 && _busy == 0) || (__owner->previouslySuspended != 0 && _suspended == 0))
@@ -768,7 +793,7 @@ static void _pipewire_reconcile(pipewire_t *__owner, const cJSON *__inventory)
 			fprintf(stderr, "PCM startup queue overrun: %s queued=%zu capacity=%zu\n", _endpoint->key, ring_available(&_endpoint->startup), _endpoint->startup.capacity);
 		}
 		uint8_t _wanted = __atomic_load_n(&_endpoint->wanted, __ATOMIC_ACQUIRE) != 0;
-		if (_endpoint->opened != 0 && (_endpoint->present == 0 || _busy != 0 || _suspended != 0 || _wanted == 0 || _endpoint->failed != 0 || transport_live(&_endpoint->transport) == 0))
+		if (_endpoint->opened != 0 && (_reopen || _endpoint->present == 0 || _busy != 0 || _suspended != 0 || _wanted == 0 || _endpoint->failed != 0 || transport_live(&_endpoint->transport) == 0))
 		{
 			if (__atomic_load_n(&_endpoint->transport.failed, __ATOMIC_ACQUIRE) != 0)
 			{
@@ -776,7 +801,7 @@ static void _pipewire_reconcile(pipewire_t *__owner, const cJSON *__inventory)
 				_endpoint->failed = 1;
 				fprintf(stderr, "PCM stream failed: %s code=%d; received_kind=%u received_frame=%llu sent=%llu accepted=%llu played=%llu ring=%zu/%zu; capture requested=%u available=%u frames\n", _endpoint->key, __atomic_load_n(&_endpoint->transport.failed, __ATOMIC_ACQUIRE), __atomic_load_n(&_endpoint->transport.receivedKind, __ATOMIC_RELAXED), (unsigned long long)__atomic_load_n(&_endpoint->transport.receivedFrame, __ATOMIC_RELAXED), (unsigned long long)__atomic_load_n(&_endpoint->transport.sentFrames, __ATOMIC_RELAXED), (unsigned long long)__atomic_load_n(&_endpoint->transport.acceptedFrames, __ATOMIC_RELAXED), (unsigned long long)__atomic_load_n(&_endpoint->transport.playedFrames, __ATOMIC_RELAXED), ring_available(&_endpoint->transport.ring), _endpoint->transport.ring.capacity, __atomic_load_n(&_endpoint->captureNeed, __ATOMIC_RELAXED), __atomic_load_n(&_endpoint->captureHave, __ATOMIC_RELAXED));
 			}
-			_pipewire_stop_endpoint(_endpoint, _wanted == 0 && _endpoint->present != 0 && _suspended == 0 && transport_live(&_endpoint->transport) != 0);
+			_pipewire_stop_endpoint(_endpoint, (_wanted == 0 || _reopen) && _endpoint->present != 0 && _suspended == 0 && transport_live(&_endpoint->transport) != 0);
 		}
 	}
 	/* Retire every old route before acquiring replacements. Endpoint array
@@ -792,6 +817,7 @@ static void _pipewire_reconcile(pipewire_t *__owner, const cJSON *__inventory)
 			if (transport_start(&_endpoint->transport, &__owner->control, _endpoint->device, _generation, _pipewire_transport_event, _endpoint) == 0)
 			{
 				_endpoint->opened = 1;
+				_endpoint->openedMmapPreferred = _endpoint->mmapPreferred;
 				_endpoint->failure[0] = '\0';
 				_pipewire_pending(_endpoint, 1);
 			}
@@ -899,7 +925,7 @@ int main(int __argc, char **__argv)
 		return 1;
 	}
 	_owner->core = pw_context_connect(_owner->context, NULL, 0);
-	if (_owner->core == NULL || pw_thread_loop_start(_owner->loop) < 0)
+	if (_owner->core == NULL || preferences_start(&_owner->preferences, _owner->core, _pipewire_notify, _owner) != 0 || pw_thread_loop_start(_owner->loop) < 0)
 	{
 		fputs("Linux PipeWire server unavailable\n", stderr);
 		return 1;
@@ -957,6 +983,7 @@ int main(int __argc, char **__argv)
 		free(_endpoint);
 	}
 	pw_thread_loop_stop(_owner->loop);
+	preferences_stop(&_owner->preferences);
 	pw_core_disconnect(_owner->core);
 	pw_context_destroy(_owner->context);
 	pw_thread_loop_destroy(_owner->loop);

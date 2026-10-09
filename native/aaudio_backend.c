@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "../include/shared.h"
+#include "../include/aaudio_policy.h"
 #include "../include/protocol.h"
 #include <aaudio/AAudio.h>
 #include <android/log.h>
@@ -51,7 +52,7 @@ static void _aaudio_backend_throw(JNIEnv *__env, const char *__message)
 	}
 }
 
-JNIEXPORT jlong JNICALL Java_dev_kiraly_linuxaudio_NativeAudio_create(JNIEnv *__env, jclass __class, jint __device, jint __rate, jint __channels, jint __sampleBytes, jboolean __capture, jint __source, jboolean __headset, jlong __epoch, jboolean __presentation, jstring __package)
+JNIEXPORT jlong JNICALL Java_dev_kiraly_linuxaudio_NativeAudio_create(JNIEnv *__env, jclass __class, jint __device, jint __rate, jint __channels, jint __sampleBytes, jboolean __capture, jint __source, jboolean __headset, jlong __epoch, jboolean __presentation, jboolean __preferMmap, jstring __package)
 {
 	(void)__class;
 	aaudio_backend_t *_backend = calloc(1, sizeof(*_backend));
@@ -126,7 +127,7 @@ JNIEXPORT jlong JNICALL Java_dev_kiraly_linuxaudio_NativeAudio_create(JNIEnv *__
 		if (_package != NULL)
 		{
 			AAudioStreamBuilder_setPackageName(_builder, _package);
-			_result = AAudioStreamBuilder_openStream(_builder, &_backend->stream);
+			_result = aaudio_policy_open(_builder, &_backend->stream, __preferMmap);
 			(*__env)->ReleaseStringUTFChars(__env, __package, _package);
 		}
 		else

@@ -112,3 +112,20 @@ Stopped/error fields invalidate the epoch. Stop signals cancellation, shuts down
 the lifetime socket and wakes waiters; mappings/native streams are freed only
 after their worker has returned. Pausing a PipeWire capture quiesces its producer
 immediately; existing barriers protect final retirement.
+
+## Default-route MMAP preference (0.1.8)
+
+Endpoint capability `mmap_preference:true` accepts a boolean `prefer_mmap` in
+`open`. The bridge sends true only for the effective PipeWire default in that
+endpoint's direction. The native backend attempts MMAP with functional fallback
+for true; false excludes MMAP for that stream. This is not a claim that MMAP was
+obtained: the native ready log and shared header's `mmapUsed` report the outcome.
+Missing capability suppresses this request field and policy-triggered reopening;
+a missing request field keeps the helper's historical AUTO behavior.
+
+A default-change event retires affected streams before replacements open, so a
+secondary stream cannot retain the preferred MMAP allocation. Existing Linux
+nodes and application links remain intact. Playback accepted before retirement
+is drained; a change is not a seamless hardware-stream migration. Input and
+output preference are independent. Android call policy and route reservations
+continue to take precedence over the MMAP request.

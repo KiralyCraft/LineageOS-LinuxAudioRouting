@@ -4,7 +4,7 @@ import array, hashlib, json, re, os, pathlib, select, socket, struct, subprocess
 source, build = map(pathlib.Path,sys.argv[1:])
 name='linux-audio-pw-fixture-'+str(os.getpid())
 stale_once=True
-processes=[]; opens=[]; errors=[]; samples=bytearray(); alternate_samples=bytearray(); native_samples=bytearray(); workers=[]; direct={}; sendlock=threading.Lock()
+processes=[]; opens=[]; open_requests=[]; errors=[]; samples=bytearray(); alternate_samples=bytearray(); native_samples=bytearray(); workers=[]; stream_workers={}; direct={}; sendlock=threading.Lock()
 def exact(sock,n):
     data=bytearray()
     while len(data)<n:
@@ -133,7 +133,7 @@ def helper_loop(helper):
                     send(helper,dict(op='inventory',devices=updated,suspended=False,reason=''))
                     send(helper,dict(op='reply',id=request['id'],ok=False,error='Stale device inventory'))
                     continue
-                opens.append(request['endpoint'])
+                opens.append(request['endpoint']);open_requests.append(dict(request))
                 # A deliberate cold-open delay tests Linux's retention path.
                 time.sleep(1.7 if request['endpoint']=='fixture.output' else .04)
                 d=attach(request);direct[request['stream']]=(d,request)
@@ -145,12 +145,16 @@ def helper_loop(helper):
                 d,r=direct[request['stream']]
                 send(helper,dict(op='route',stream=r['stream'],epoch=r['epoch'],endpoint=r['endpoint'],actual_android_id=1,verified=True))
                 target=produce if r['endpoint'].endswith('input') else consume
-                t=threading.Thread(target=target,args=(d,r),daemon=True);t.start();workers.append(t)
+                t=threading.Thread(target=target,args=(d,r),daemon=True);stream_workers[r['stream']]=t;t.start();workers.append(t)
             elif op=='close':
                 item=direct.pop(request['stream'],None)
                 if item:
                     try:item[0].shutdown(socket.SHUT_RDWR)
                     except OSError:pass
+                    worker=stream_workers.pop(request['stream'],None)
+                    if worker is not None:
+                        worker.join(timeout=3)
+                        assert not worker.is_alive(),'Fixture worker failed to retire'
                     item[0].close()
             else:raise AssertionError(op)
     except (EOFError,OSError):pass
@@ -183,7 +187,8 @@ with tempfile.TemporaryDirectory(prefix='audio-pw-') as directory:
         native_devices.append(dict(native_devices[1],key='fixture.native.undrained'))
         for device in devices+native_devices:
             device['shared_pcm_owner']='android'
-            device['shared_pcm']=os.environ.get('AUDIO_SHARED_FIXTURE')=='1' and device['key']!='fixture.alternate'
+            device['mmap_preference']=os.environ.get('AUDIO_MMAP_FIXTURE')=='1'
+            device['shared_pcm']=os.environ.get('AUDIO_SHARED_FIXTURE')=='1' and (device['key']!='fixture.alternate' or os.environ.get('AUDIO_MMAP_FIXTURE')=='1')
         send(helper,dict(op='inventory',devices=devices+native_devices,suspended=False,reason=''))
         time.sleep(.05)
         for operation,direction in [('playback','output'),('capture','input'),('capture-headset','headset.input')]:
@@ -320,6 +325,39 @@ with tempfile.TemporaryDirectory(prefix='audio-pw-') as directory:
         recorder.terminate();recorder.wait(timeout=5)
         assert opens.count('fixture.input')==before+1,'Reservation release caused repeated opens'
         print('PASS resource-busy node retention, no competing capture open, recovery after release')
+        if os.environ.get('AUDIO_MMAP_FIXTURE')=='1':
+            # Start the non-default first. It must never acquire the preferred path.
+            def choose(kind,key):
+                subprocess.run(['pactl','set-default-'+kind,'linux-audio.'+key],env=env,check=True,timeout=3)
+            choose('sink','fixture.output');choose('source','fixture.input')
+            # /dev/zero supplies an ongoing stream, not a finite startup packet.
+            def start_silence(key):
+                with open('/dev/zero','rb') as zero:
+                    p=subprocess.Popen(['pacat','--playback','--raw','--format=float32le','--rate=48000','--channels=2','--latency-msec=40','--property=node.dont-move=true','--device=linux-audio.'+key],stdin=zero,env=env,stderr=logs['bridge'])
+                processes.append(p);return p
+            first=len(open_requests);secondary=start_silence('fixture.alternate')
+            wait_for(lambda:any(r['endpoint']=='fixture.alternate' and r.get('prefer_mmap') is False for r in open_requests[first:]))
+            primary=start_silence('fixture.output')
+            wait_for(lambda:any(r['endpoint']=='fixture.output' and r.get('prefer_mmap') is True for r in open_requests[first:]))
+            first=len(open_requests);choose('sink','fixture.alternate')
+            wait_for(lambda:any(r['endpoint']=='fixture.output' and r.get('prefer_mmap') is False for r in open_requests[first:]))
+            wait_for(lambda:any(r['endpoint']=='fixture.alternate' and r.get('prefer_mmap') is True for r in open_requests[first:]))
+            # Observe actual PCM after reopening, not just an accepted request.
+            sample_counts=(len(samples),len(alternate_samples))
+            wait_for(lambda:len(samples)>sample_counts[0] and len(alternate_samples)>sample_counts[1])
+            assert primary.poll() is None and secondary.poll() is None,'Default change killed a client'
+            primary.terminate();secondary.terminate();primary.wait(timeout=3);secondary.wait(timeout=3)
+            # Input preference is independent, and changing output must not reopen it.
+            first=len(open_requests)
+            recorder=subprocess.Popen(['pw-cat','--record','--raw','--format','f32','--rate','48000','--channels','1','--properties={"node.dont-move":true}','--target','linux-audio.fixture.input','-'],env=env,stdout=subprocess.DEVNULL,stderr=logs['bridge']);processes.append(recorder)
+            wait_for(lambda:any(r['endpoint']=='fixture.input' and r.get('prefer_mmap') is True for r in open_requests[first:]))
+            source_opens=opens.count('fixture.input');choose('sink','fixture.output');time.sleep(.2)
+            assert opens.count('fixture.input')==source_opens
+            first=len(open_requests);choose('source','fixture.headset.input')
+            wait_for(lambda:any(r['endpoint']=='fixture.input' and r.get('prefer_mmap') is False for r in open_requests[first:]))
+            assert recorder.poll() is None
+            recorder.terminate();recorder.wait(timeout=3)
+            print('PASS default MMAP preference, secondary-first open, live default handoff, independent input and client survival')
         send(helper,dict(op='inventory',devices=[],suspended=False,reason=''))
         time.sleep(.1);assert bridge.poll() is None,'Unplug stopped the bridge'
         dump=subprocess.check_output(['pw-dump'],env=env,timeout=3);assert b'linux-audio.fixture.output' in dump,'Unplug removed the retained endpoint'
@@ -337,6 +375,10 @@ with tempfile.TemporaryDirectory(prefix='audio-pw-') as directory:
             if p.poll() is None:p.terminate()
             try:p.wait(timeout=8)
             except subprocess.TimeoutExpired:p.kill();p.wait();errors.append('process did not stop')
+        for d,r in list(direct.values()):
+            try:d.shutdown(socket.SHUT_RDWR)
+            except OSError:pass
+        for worker in workers:worker.join(timeout=3)
         for d,r in list(direct.values()):d.close()
         if 'helper' in locals():helper.close()
         for key,log in logs.items():
@@ -345,5 +387,5 @@ with tempfile.TemporaryDirectory(prefix='audio-pw-') as directory:
 print('PASS isolated production PipeWire/native stack; no hardware audio touched')
 
 artifacts=['native/linux-audio-bridge','tests/broker-arm','tests/transport-fixture']
-attestation=dict(artifacts={name:hashlib.sha256((build/name).read_bytes()).hexdigest() for name in artifacts},script_sha256=hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),clock_driver=os.environ.get('LINUX_AUDIO_CLOCK_DRIVER','negotiated'),shared_pcm=os.environ.get('AUDIO_SHARED_FIXTURE')=='1',shared_fixture_sha256=hashlib.sha256((source/'tests/shared_fixture.py').read_bytes()).hexdigest(),result='PASS')
-(build/('tests/integration-shared-attestation.json' if os.environ.get('AUDIO_SHARED_FIXTURE')=='1' else 'tests/integration-attestation.json')).write_text(json.dumps(attestation,indent=2)+'\n')
+attestation=dict(artifacts={name:hashlib.sha256((build/name).read_bytes()).hexdigest() for name in artifacts},script_sha256=hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),clock_driver=os.environ.get('LINUX_AUDIO_CLOCK_DRIVER','negotiated'),shared_pcm=os.environ.get('AUDIO_SHARED_FIXTURE')=='1',mmap_preference=os.environ.get('AUDIO_MMAP_FIXTURE')=='1',shared_fixture_sha256=hashlib.sha256((source/'tests/shared_fixture.py').read_bytes()).hexdigest(),result='PASS')
+(build/('tests/integration-mmap-attestation.json' if os.environ.get('AUDIO_MMAP_FIXTURE')=='1' else 'tests/integration-shared-attestation.json' if os.environ.get('AUDIO_SHARED_FIXTURE')=='1' else 'tests/integration-attestation.json')).write_text(json.dumps(attestation,indent=2)+'\n')

@@ -276,6 +276,17 @@ static void *_transport_worker(void *__context)
 	return NULL;
 }
 
+uint8_t transport_shared_requested(const cJSON *__device)
+{
+	uint8_t _shared = protocol_boolean(__device, "shared_pcm") && strcmp(protocol_string(__device, "shared_pcm_owner"), "android") == 0;
+	const char *_sharedOption = getenv("LINUX_AUDIO_SHARED_PCM");
+	if (_sharedOption != NULL && strcmp(_sharedOption, "0") == 0)
+	{
+		_shared = 0;
+	}
+	return _shared;
+}
+
 int32_t transport_start(transport_t *__transport, control_t *__control, const cJSON *__device, uint64_t __generation, transport_event_t __event, void *__context)
 {
 	memset(__transport, 0, sizeof(*__transport));
@@ -307,14 +318,13 @@ int32_t transport_start(transport_t *__transport, control_t *__control, const cJ
 	protocol_set_string(_request, "op", "open");
 	protocol_set_boolean(_request, "write_credit", 1);
 	protocol_set_boolean(_request, "presentation_clock", 1);
-	uint8_t _shared = protocol_boolean(__device, "shared_pcm") && strcmp(protocol_string(__device, "shared_pcm_owner"), "android") == 0;
-	const char *_sharedOption = getenv("LINUX_AUDIO_SHARED_PCM");
-	if (_sharedOption != NULL && strcmp(_sharedOption, "0") == 0)
-	{
-		_shared = 0;
-	}
+	uint8_t _shared = transport_shared_requested(__device);
 	protocol_set_boolean(_request, "shared_pcm", _shared);
 	protocol_set_string(_request, "shared_pcm_owner", "android");
+	if (_shared && protocol_boolean(__device, "mmap_preference"))
+	{
+		protocol_set_boolean(_request, "prefer_mmap", protocol_boolean(__device, "prefer_mmap"));
+	}
 	protocol_set_string(_request, "endpoint", protocol_string(__device, "key"));
 	protocol_set_number(_request, "generation", __generation);
 	uint64_t _openStart = protocol_now();

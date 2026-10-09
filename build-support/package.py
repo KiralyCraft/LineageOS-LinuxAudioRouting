@@ -20,7 +20,7 @@ shutil.copy2(build/'android/LinuxAudio.apk',output/'LinuxAudio.apk')
 shutil.copy2(build/'manifest.json',output/'manifest.json')
 for file in ['README.md','PROTOCOL.md','install-linux.sh']:
     shutil.copy2(source/file,output/file)
-shutil.copytree(build/'tests',output/'validation',dirs_exist_ok=True,ignore=shutil.ignore_patterns('broker-host','broker-arm','unit','shared-unit','transport-fixture'))
+shutil.copytree(build/'tests',output/'validation',dirs_exist_ok=True,ignore=shutil.ignore_patterns('broker-host','broker-arm','unit','shared-unit','aaudio-policy-unit','transport-fixture'))
 files=[p for p in sorted(output.rglob('*')) if p.is_file() and p.name!='SHA256SUMS']
 (output/'SHA256SUMS').write_text(''.join(hashlib.sha256(p.read_bytes()).hexdigest()+'  '+str(p.relative_to(output))+'\n' for p in files))
 print(output)
