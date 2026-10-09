@@ -41,3 +41,40 @@ LXDE supervises `linux-audio tray`, which starts the private server and updates 
 Applied the migration to the real user configuration, with originals under `~/.local/state/linux-audio-routing/backup-20261009-200713-561410`. Unwrapped PulseAudio/native PipeWire/ALSA control probes all reached the bridge; JBL stereo was already the default output and was retained. The old native PulseAudio daemon had no streams or other clients and was stopped gracefully. Its socket disappeared. Removed only the obsolete commented native startup block and the custom anonymous chroot socket line from Termux's profile/default.pa; originals and path mapping are in the same backup's termux-native directory. Packages and unrelated native settings were retained.
 
 Disposable-home tests cover upgrades of old managed blocks, idempotence, backup content, LXSession environment preservation, shell early-return ordering, both Openbox profiles and explicit stale-Termux export removal. Existing supervisor lifecycle regression passes. Actual lxpanel/pasystray and pavucontrol connected to the production audio server and created an embedded tray icon/settings window on isolated Xvfb. The virtual-display GUI test used GTK's Cairo renderer and a separate DBus session; no production graphics setting was changed. Temporary GUI processes were stopped, the audio server stayed running, and logs remain on /tmp. No LXDE desktop was running during the real migration, so the icon starts at the next desktop launch. Audible playback, call/doze/unplug and long-soak validation remain separate pending hardware checks.
+
+## 0.1.4 routing/resource candidate (2026-10-09)
+
+The exact installed LineageOS source audit and device evidence are recorded in `diagnostics/android-routing/README.md`. The second UNPROCESSED recorder fails inside PAL's raw-session admission, even when Android reports a successful route and unsilenced recording. A targeted phone-raw plus headset-communication probe delivered nonzero samples from both routes, without the raw-session failure. Full PCM was not saved.
+
+Implemented in the candidate:
+
+- Android reserves shared capture/output paths until native stream release; conflicting selections publish a distinct `busy` reason without disappearing or redirecting to speakers. Multiple Linux apps still share an endpoint through PipeWire.
+- Headset capture uses the communication source. Phone capture retains UNPROCESSED when supported. PCM transport remains unchanged in format/content; any platform processing associated with the communication source belongs to Android, not the bridge.
+- Explicit Bluetooth Stereo/Headset selection prevents the other mode reopening automatically. Mode changes retire incompatible streams before acquiring the replacement path. Android still owns call priority.
+- Linux reconciliation retires old endpoints before opening replacements, independent of inventory ordering. Busy routes retain their identities and recover after their resource becomes free.
+- Earlier uncommitted fixes include separate accepted/played credits, passive Sound Settings meters, relevant-event retries, retained manager wakeups and short sounds, bounded startup/backpressure queues, and full-duplex nonblocking PCM writes.
+
+Native build and host tests run on root@192.168.104.201; isolated graph tests run on the phone against a fixture with no hardware access. The user installed 0.1.4. Live tests exposed cold-open playback overflow and simultaneous capture FIFO overflow; the root phone-plus-headset capture probe alone did not establish that the entire PipeWire path worked. Full installed-helper routing validation remains pending. Do not describe the candidate as a completed live validation or install its Magisk package automatically.
+
+## 0.1.5 coordinated latency candidate (2026-10-09)
+
+Measured cold-route backlog, generic AudioTrack oversizing, and missing downstream
+presentation-delay reporting. See the latency diagnostic report and numeric
+summary. An event-driven-only A/B worsened speaker latency with the old large
+Android buffer, so it was not deployed alone.
+
+Implemented capability-selected graph driving, bounded pending queues, coherent
+native presentation frame/time observations, SPA latency publication, per-epoch
+reset, and adaptive effective AudioTrack sizing that survives Android rerouting.
+The graph watchdog handles missed completion callbacks without pacing normal
+playback. Native transport remains C99 and bit-preserving. The new latency
+arithmetic and buffer policy have unit coverage; isolated graph validation checks
+actual client timing, exact sample patterns and lifecycle/routing behavior.
+Manifest generation now refuses stale isolated-test results when binary/script
+hashes do not match and no longer inherits old physical-microphone claims.
+
+The root policy probe showed that Android can re-enlarge buffers during routing;
+reapplying the effective limit fixes that case. These short probe runs are not
+ordinary-helper YouTube or long-soak validation. The APK is versioned separately
+as 0.1.5/code 6 for manual installation. No Magisk installation is authorized or
+needed for the live candidate update.

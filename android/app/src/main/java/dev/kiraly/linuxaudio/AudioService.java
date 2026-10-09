@@ -25,6 +25,7 @@ public final class AudioService extends Service
 {
 	static final String STOP = "dev.kiraly.linuxaudio.STOP";
 	static volatile String statusText = "Ready — start the helper after each reboot";
+	private final RoutePolicy routes = new RoutePolicy();
 	private final Map<Long, StreamIo> streams = new ConcurrentHashMap<>();
 	private final Map<String, String> explicitProfiles = new ConcurrentHashMap<>();
 	private final Handler main = new Handler(android.os.Looper.getMainLooper());
@@ -117,7 +118,7 @@ public final class AudioService extends Service
 			{
 				connection = null;
 				closeStreams();
-				main.post(() -> policy.idle());
+				operations.post(this::updatePolicy);
 				if (running)
 					status("Broker unavailable: " + failure.getMessage());
 			}
@@ -141,8 +142,17 @@ public final class AudioService extends Service
 		if (operation.equals("close"))
 		{
 			StreamIo stream = streams.get(request.optLong("stream"));
-			if (stream != null)
-				stream.close();
+			try
+			{
+				if (stream != null)
+					retire(stream);
+				updatePolicy();
+				publishInventory();
+			}
+			catch (Exception failure)
+			{
+				status("Stream retirement failed: " + failure.getMessage());
+			}
 			return;
 		}
 		if (operation.equals("activate"))
@@ -170,33 +180,47 @@ public final class AudioService extends Service
 			JSONObject descriptor = devices.describe(endpoint);
 			if (device == null || descriptor == null || !descriptor.getBoolean("available"))
 				throw new IOException("Selected endpoint disconnected or permission denied");
-			if (!policy.acquire())
-				throw new IOException("Android denied audio focus");
 			String group = descriptor.getString("group");
+			String explicit = explicitProfiles.get(group);
+			if (explicit != null && (descriptor.getString("profile").equals("headset") || descriptor.getString("profile").equals("stereo")) && !explicit.equals(descriptor.getString("profile")))
+				throw new IOException("Bluetooth profile is " + explicit + "; select the other profile before opening its route");
+			String conflict = routes.conflict(endpoint, descriptor.getString("resource"));
+			if (!conflict.isEmpty())
+				throw new IOException(conflict);
 			if (descriptor.getString("profile").equals("headset"))
 			{
 				for (StreamIo other : streams.values())
 				{
 					JSONObject otherDevice = devices.describe(other.endpoint);
 					if (otherDevice != null && otherDevice.optString("group").equals(group) && !other.headset)
-						other.close();
+						retire(other);
 				}
 			}
+			updatePolicy();
 			stream = new StreamIo(this, request, device, descriptor);
+			routes.reserve(stream.id, endpoint, descriptor.getString("resource"), descriptor.getString("name"));
+			if (!policy.acquire())
+				throw new IOException("Android denied audio focus");
 			streams.put(stream.id, stream);
 			updateWakeLock();
 			stream.prepare(request);
 			if (suspended || policy.priorityCall())
 				throw new IOException("Android call started during setup");
-			send(new JSONObject().put("op", "reply").put("id", request.getLong("id")).put("ok", true).put("stream", stream.id).put("epoch", stream.epoch).put("token", request.getString("token")).put("rate", stream.rate).put("channels", stream.channels).put("format", stream.format).put("verified", false));
+			send(new JSONObject().put("op", "reply").put("id", request.getLong("id")).put("ok", true).put("stream", stream.id).put("epoch", stream.epoch).put("token", request.getString("token")).put("rate", stream.rate).put("channels", stream.channels).put("format", stream.format).put("write_credit", stream.writeCredit).put("presentation_clock", stream.presentationClock).put("verified", false));
 			publishInventory();
 		}
 		catch (Exception failure)
 		{
 			if (stream != null)
 			{
-				streams.remove(stream.id);
-				stream.close();
+				try
+				{
+					retire(stream);
+				}
+				catch (Exception retirement)
+				{
+					android.util.Log.e("LinuxAudio", "Stream retirement incomplete", retirement);
+				}
 			}
 			try
 			{
@@ -206,8 +230,14 @@ public final class AudioService extends Service
 			{
 			}
 			updateWakeLock();
-			if (streams.isEmpty())
-				policy.idle();
+			updatePolicy();
+			try
+			{
+				publishInventory();
+			}
+			catch (Exception ignored)
+			{
+			}
 			status("Stream setup failed: " + failure.getMessage());
 		}
 	}
@@ -221,17 +251,19 @@ public final class AudioService extends Service
 			throw new IOException("Endpoint unavailable");
 		String group = selected.getString("group");
 		AudioDeviceInfo communication = devices.communication(group);
-		if (profile.equals("headset") && (communication == null || !policy.headset(communication)))
+		if (profile.equals("headset") && communication == null)
 			throw new IOException("Android headset profile unavailable");
-		explicitProfiles.put(group, profile);
 		for (StreamIo stream : streams.values())
 		{
 			JSONObject descriptor = devices.describe(stream.endpoint);
 			if (descriptor != null && descriptor.optString("group").equals(group) && stream.headset != profile.equals("headset"))
-				stream.close();
+				retire(stream);
 		}
+		if (profile.equals("headset") && !policy.headset(communication))
+			throw new IOException("Android headset profile unavailable");
 		if (profile.equals("stereo"))
 			policy.releaseCommunication();
+		explicitProfiles.put(group, profile);
 		publishInventory();
 	}
 
@@ -249,6 +281,7 @@ public final class AudioService extends Service
 					if (device == null || device.getId() != stream.selected.getId())
 						stream.close();
 				}
+				updatePolicy();
 				publishInventory();
 			}
 			catch (Exception failure)
@@ -298,6 +331,7 @@ public final class AudioService extends Service
 		if (failure == null)
 			failure = "Unknown stream failure";
 		streams.remove(stream.id, stream);
+		routes.release(stream.id);
 		updateWakeLock();
 		try
 		{
@@ -307,19 +341,41 @@ public final class AudioService extends Service
 		{
 		}
 		if (!failure.isEmpty())
+		{
 			status("Audio stopped: " + failure);
-		main.post(() -> {
-			boolean headsetActive = false;
-			for (StreamIo other : streams.values())
-				if (other.headset)
-					headsetActive = true;
-			if (!headsetActive)
-				policy.releaseCommunication();
-			if (streams.isEmpty() && !suspended)
-				policy.idle();
-		});
+		}
 		if (operations != null)
-			operations.post(() -> { try { publishInventory(); } catch (Exception ignored) { } });
+			operations.post(() -> { updatePolicy(); try { publishInventory(); } catch (Exception ignored) { } });
+	}
+
+	private void retire(StreamIo stream) throws Exception
+	{
+		stream.cancel();
+		if (!stream.awaitStopped())
+			throw new IOException("Android stream is still releasing its audio path");
+		streams.remove(stream.id, stream);
+		routes.release(stream.id);
+		updateWakeLock();
+	}
+
+	private void updatePolicy()
+	{
+		if (!running || connection == null)
+		{
+			policy.idle();
+			return;
+		}
+		boolean headsetActive = false;
+		for (Map.Entry<String, String> profile : explicitProfiles.entrySet())
+			if (profile.getValue().equals("headset") && devices.communication(profile.getKey()) != null)
+				headsetActive = true;
+		for (StreamIo other : streams.values())
+			if (other.headset)
+				headsetActive = true;
+		if (!headsetActive)
+			policy.releaseCommunication();
+		if (streams.isEmpty() && !headsetActive && !suspended)
+			policy.idle();
 	}
 
 	private synchronized void updateWakeLock()
@@ -336,7 +392,7 @@ public final class AudioService extends Service
 	private void closeStreams()
 	{
 		for (StreamIo stream : new ArrayList<>(streams.values()))
-			stream.close();
+			stream.cancel();
 	}
 
 	private void send(JSONObject message) throws IOException
@@ -361,8 +417,13 @@ public final class AudioService extends Service
 				if (active != null && active.optString("group").equals(group) && stream.headset)
 					headsetActive = true;
 			}
-			if (headsetActive && descriptor.getString("profile").equals("stereo"))
-				descriptor.put("available", false).put("reason", "Bluetooth headset mode is active");
+			String busy = routes.conflict(descriptor.getString("key"), descriptor.getString("resource"));
+			String selectedProfile = explicitProfiles.get(group);
+			if (selectedProfile != null && (descriptor.getString("profile").equals("headset") || descriptor.getString("profile").equals("stereo")) && !selectedProfile.equals(descriptor.getString("profile")))
+				busy = "Bluetooth profile is " + selectedProfile;
+			else if (headsetActive && descriptor.getString("profile").equals("stereo"))
+				busy = "Bluetooth headset mode is active";
+			descriptor.put("busy", busy);
 		}
 		send(new JSONObject().put("op", "inventory").put("devices", inventory).put("suspended", suspended).put("reason", suspendReason));
 	}

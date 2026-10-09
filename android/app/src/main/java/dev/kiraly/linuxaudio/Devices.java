@@ -116,7 +116,29 @@ final class Devices
 			String format = "f32le";
 			if (profile.equals("headset"))
 				format = "s16le";
-			JSONObject descriptor = new JSONObject().put("key", key).put("group", group).put("name", name).put("direction", direction).put("android_id", device.getId()).put("type", device.getType()).put("profile", profile).put("rate", rate).put("channels", channels).put("format", format).put("available", available).put("reason", available ? "" : "Android permission required");
+			JSONObject descriptor = new JSONObject().put("key", key).put("group", group).put("name", name).put("direction", direction).put("android_id", device.getId()).put("type", device.getType()).put("profile", profile).put("rate", rate).put("channels", channels).put("format", format).put("clock_driver", true).put("available", available).put("reason", available ? "" : "Android permission required");
+			String resource = "playback.fast";
+			if (profile.equals("stereo"))
+				resource = "playback.buffered";
+			if (input)
+			{
+				int source = android.media.MediaRecorder.AudioSource.VOICE_RECOGNITION;
+				resource = "capture.voice-recognition";
+				if ("true".equals(manager.getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED)))
+				{
+					source = android.media.MediaRecorder.AudioSource.UNPROCESSED;
+					resource = "capture.raw";
+				}
+				if (profile.equals("headset"))
+				{
+					source = android.media.MediaRecorder.AudioSource.VOICE_COMMUNICATION;
+					resource = "capture.communication";
+				}
+				descriptor.put("capture_source", source);
+			}
+			descriptor.put("resource", resource);
+			if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_MIC)
+				descriptor.put("selection_group", "phone-microphone");
 			devices.put(key, device);
 			descriptors.put(key, descriptor);
 			inventory.put(descriptor);

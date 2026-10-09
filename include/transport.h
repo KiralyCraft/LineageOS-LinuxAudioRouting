@@ -6,6 +6,7 @@ typedef void (*transport_event_t)(void *__context);
 typedef struct
 {
 	control_t *control;
+	char error[256];
 	int32_t socket;
 	int32_t wake;
 	int32_t live;
@@ -23,6 +24,14 @@ typedef struct
 	uint64_t epoch;
 	uint64_t sentFrames;
 	uint64_t playedFrames;
+	uint64_t acceptedFrames;
+	uint8_t writeCredit;
+	uint8_t presentationClock;
+	uint64_t presentationFrame;
+	uint64_t presentationTime;
+	uint32_t presentationSerial;
+	uint32_t receivedKind;
+	uint64_t receivedFrame;
 	uint64_t clockFrame;
 	uint64_t clockTime;
 	uint32_t clockSerial;
@@ -37,5 +46,6 @@ void transport_stop(transport_t *__transport);
 int32_t transport_drain(transport_t *__transport);
 void transport_wake(transport_t *__transport);
 void transport_fail(transport_t *__transport);
+void transport_fail_reason(transport_t *__transport, int32_t __reason);
 uint8_t transport_live(const transport_t *__transport);
 #endif

@@ -1,6 +1,7 @@
 #define _GNU_SOURCE
 #include "../include/framing.h"
 #include "../include/ring.h"
+#include "../include/latency.h"
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,6 +16,22 @@ static void _unit_require(uint8_t __condition, const char *__description)
 		fprintf(stderr, "FAIL %s\n", __description);
 		exit(1);
 	}
+}
+
+static void _unit_latency(void)
+{
+	latency_t _point = {48000, UINT64_C(10000000000)};
+	uint64_t _delay = 0;
+	_unit_require(latency_estimate(&_point, 52800, 48000, UINT64_C(10020000000), &_delay) && _delay == UINT64_C(80000000), "presentation delay includes queue and elapsed time");
+	_unit_require(latency_estimate(&_point, 52800, 48000, UINT64_C(9980000000), &_delay) && _delay == UINT64_C(120000000), "future committed presentation time");
+	_unit_require(latency_estimate(&_point, 48000, 48000, UINT64_C(10020000000), &_delay) && _delay == 0, "drained delay clamps to zero");
+	_unit_require(!latency_estimate(&_point, 47999, 48000, _point.time, &_delay), "new epoch cannot use old frontier");
+	_unit_require(!latency_estimate(&_point, 52800, 0, _point.time, &_delay), "zero rate rejected");
+	_unit_require(!latency_estimate(&_point, 52800, 48000, UINT64_C(13000000000), &_delay), "stale timestamp rejected");
+	_unit_require(!latency_estimate(&_point, UINT64_MAX, 48000, _point.time, &_delay), "overflow frontier rejected");
+	_point.time = 0;
+	_unit_require(!latency_estimate(&_point, 52800, 48000, 0, &_delay), "unavailable timestamp is not zero latency");
+	puts("PASS presentation latency arithmetic, stale and invalid metadata");
 }
 
 static void _unit_ring(void)
@@ -112,6 +129,7 @@ static void _unit_descriptor(void)
 
 int main(void)
 {
+	_unit_latency();
 	_unit_ring();
 	_unit_framing();
 	_unit_descriptor();

@@ -22,6 +22,8 @@ final class Wire implements AutoCloseable
 	static final int PCM_MAGIC = 0x50445541;
 	static final int AUDIO = 1;
 	static final int CLOCK = 2;
+	static final int CREDIT = 3;
+	static final int PRESENTATION = 4;
 	final LocalSocket socket;
 	final InputStream input;
 	final OutputStream output;

@@ -163,21 +163,26 @@ cJSON *protocol_receive_json(int32_t __socket, int32_t __timeout)
 	return _message;
 }
 
-int32_t protocol_send_pcm(int32_t __socket, const protocol_t *__packet)
+int32_t protocol_encode_pcm_header(uint8_t *__header, const protocol_t *__packet)
 {
 	if (__packet->length > AUDIO_PCM_MAX)
 	{
 		return -1;
 	}
-	uint8_t _header[AUDIO_PCM_HEADER] = {0};
-	_protocol_put(_header, AUDIO_PCM_MAGIC, 4);
-	_protocol_put(_header + 4, __packet->kind, 4);
-	_protocol_put(_header + 8, __packet->epoch, 8);
-	_protocol_put(_header + 16, __packet->frame, 8);
-	_protocol_put(_header + 24, __packet->timestamp, 8);
-	_protocol_put(_header + 32, __packet->frames, 4);
-	_protocol_put(_header + 36, __packet->length, 4);
-	if (protocol_transfer(__socket, _header, sizeof(_header), 1, 1000) != 0)
+	_protocol_put(__header, AUDIO_PCM_MAGIC, 4);
+	_protocol_put(__header + 4, __packet->kind, 4);
+	_protocol_put(__header + 8, __packet->epoch, 8);
+	_protocol_put(__header + 16, __packet->frame, 8);
+	_protocol_put(__header + 24, __packet->timestamp, 8);
+	_protocol_put(__header + 32, __packet->frames, 4);
+	_protocol_put(__header + 36, __packet->length, 4);
+	return 0;
+}
+
+int32_t protocol_send_pcm(int32_t __socket, const protocol_t *__packet)
+{
+	uint8_t _header[AUDIO_PCM_HEADER];
+	if (protocol_encode_pcm_header(_header, __packet) != 0 || protocol_transfer(__socket, _header, sizeof(_header), 1, 1000) != 0)
 	{
 		return -1;
 	}
@@ -193,7 +198,7 @@ int32_t protocol_receive_pcm(int32_t __socket, protocol_t *__packet)
 	}
 	uint64_t _kind = _protocol_get(_header + 4, 4);
 	uint64_t _length = _protocol_get(_header + 36, 4);
-	if (_protocol_get(_header, 4) != AUDIO_PCM_MAGIC || _length > AUDIO_PCM_MAX || (_kind != AUDIO_PCM_DATA && _kind != AUDIO_PCM_CLOCK))
+	if (_protocol_get(_header, 4) != AUDIO_PCM_MAGIC || _length > AUDIO_PCM_MAX || (_kind != AUDIO_PCM_DATA && _kind != AUDIO_PCM_CLOCK && _kind != AUDIO_PCM_CREDIT && _kind != AUDIO_PCM_PRESENTATION))
 	{
 		return -1;
 	}

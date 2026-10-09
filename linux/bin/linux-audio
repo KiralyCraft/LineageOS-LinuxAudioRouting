@@ -90,7 +90,7 @@ case $AUDIO_OPERATION in
             for child in "${AUDIO_CHILDREN[@]:0:3}"; do kill -0 "$child" 2>/dev/null || exit 1; done
             if [[ $AUDIO_BRIDGE_PID == 0 ]] || ! kill -0 "$AUDIO_BRIDGE_PID" 2>/dev/null; then
                 if [[ $AUDIO_BRIDGE_PID != 0 ]]; then wait "$AUDIO_BRIDGE_PID" 2>/dev/null || true; fi
-                "$AUDIO_BASE/bin/linux-audio-bridge" >"$AUDIO_RUNTIME/bridge.log" 2>&1 &
+                "$AUDIO_BASE/bin/linux-audio-bridge" >>"$AUDIO_RUNTIME/bridge.log" 2>&1 &
                 AUDIO_BRIDGE_PID=$!
                 AUDIO_CHILDREN[3]=$AUDIO_BRIDGE_PID
             fi

@@ -1,6 +1,7 @@
 package dev.kiraly.linuxaudio;
 
 import android.media.AudioAttributes;
+import android.media.AudioManager;
 import android.media.AudioDeviceInfo;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
@@ -24,7 +25,16 @@ final class StreamIo implements AutoCloseable, Runnable
 	final long epoch;
 	final AudioDeviceInfo selected;
 	final boolean capture;
+	final int captureSource;
+	private volatile boolean cancelled;
 	final boolean headset;
+	final boolean writeCredit;
+	final boolean presentationClock;
+	private PlaybackBuffer playbackBuffer;
+	private final AudioTimestamp presentation = new AudioTimestamp();
+	private long lastPresentationTime;
+	private long lastPresentationFrame;
+	private long nextPresentationQuery;
 	final int rate;
 	final int channels;
 	final int sampleBytes;
@@ -43,14 +53,13 @@ final class StreamIo implements AutoCloseable, Runnable
 	private long playedHigh;
 	private long playedLast;
 	private long probedFrames;
-	private long playbackOrigin;
 	private final Object resources = new Object();
 	private boolean released;
 	private final android.media.AudioRouting.OnRoutingChangedListener routeListener = routing -> routeChanged();
 
 	private void routeChanged()
 	{
-		if (verified)
+		if (verified && live)
 		{
 			try
 			{
@@ -58,13 +67,12 @@ final class StreamIo implements AutoCloseable, Runnable
 			}
 			catch (IOException failure)
 			{
-				if (!service.suspended)
+				if (live && !service.suspended)
 					routeFailure = failure.getMessage();
 				close();
 			}
 		}
 	}
-	private final AudioTimestamp playbackTimestamp = new AudioTimestamp();
 	private static final byte[] EMPTY = new byte[0];
 
 	StreamIo(AudioService service, JSONObject request, AudioDeviceInfo selected, JSONObject device) throws Exception
@@ -75,6 +83,9 @@ final class StreamIo implements AutoCloseable, Runnable
 		id = request.getLong("stream");
 		epoch = request.getLong("epoch");
 		capture = device.getString("direction").equals("input");
+		captureSource = device.optInt("capture_source", MediaRecorder.AudioSource.UNPROCESSED);
+		writeCredit = !capture && request.optBoolean("write_credit", false);
+		presentationClock = !capture && request.optBoolean("presentation_clock", false);
 		headset = device.getString("profile").equals("headset");
 		rate = request.getInt("rate");
 		channels = request.getInt("channels");
@@ -114,7 +125,7 @@ final class StreamIo implements AutoCloseable, Runnable
 				int minimum = AudioRecord.getMinBufferSize(rate, mask, encoding);
 				if (minimum <= 0)
 					throw new IOException("AudioRecord rejected the PCM format");
-				recorder = new AudioRecord.Builder().setAudioSource("true".equals(service.devices.manager.getProperty(android.media.AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED)) ? MediaRecorder.AudioSource.UNPROCESSED : MediaRecorder.AudioSource.VOICE_RECOGNITION).setAudioFormat(audioFormat).setBufferSizeInBytes(Math.max(minimum, rate / 25 * frameBytes)).build();
+				recorder = new AudioRecord.Builder().setAudioSource(captureSource).setAudioFormat(audioFormat).setBufferSizeInBytes(Math.max(minimum, rate / 25 * frameBytes)).build();
 				if (!recorder.setPreferredDevice(selected))
 					throw new IOException("Microphone route rejected");
 			}
@@ -123,8 +134,27 @@ final class StreamIo implements AutoCloseable, Runnable
 				int minimum = AudioTrack.getMinBufferSize(rate, mask, encoding);
 				if (minimum <= 0)
 					throw new IOException("AudioTrack rejected the PCM format");
+				// Local playback and Bluetooth media must not compete for the
+				// same mixed output. Bluetooth has its own buffered transport;
+				// explicitly select that media profile and verify the actual route.
+				int performanceMode = AudioTrack.PERFORMANCE_MODE_LOW_LATENCY;
+				if (selected.getType() == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP)
+					performanceMode = AudioTrack.PERFORMANCE_MODE_POWER_SAVING;
 				AudioAttributes attributes = new AudioAttributes.Builder().setUsage(headset ? AudioAttributes.USAGE_VOICE_COMMUNICATION : AudioAttributes.USAGE_MEDIA).setContentType(headset ? AudioAttributes.CONTENT_TYPE_SPEECH : AudioAttributes.CONTENT_TYPE_MUSIC).build();
-				track = new AudioTrack.Builder().setAudioAttributes(attributes).setAudioFormat(audioFormat).setTransferMode(AudioTrack.MODE_STREAM).setBufferSizeInBytes(Math.max(minimum, rate / 50 * frameBytes)).build();
+				track = new AudioTrack.Builder().setAudioAttributes(attributes).setAudioFormat(audioFormat).setTransferMode(AudioTrack.MODE_STREAM).setPerformanceMode(performanceMode).setBufferSizeInBytes(Math.max(minimum, rate / 50 * frameBytes)).build();
+				int burst = 1;
+				try
+				{
+					int nativeRate = Integer.parseInt(service.devices.manager.getProperty(AudioManager.PROPERTY_OUTPUT_SAMPLE_RATE));
+					int nativeBurst = Integer.parseInt(service.devices.manager.getProperty(AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER));
+					if (nativeRate > 0 && nativeBurst > 0 && nativeBurst <= nativeRate)
+						burst = (int)(((long)nativeBurst * rate + nativeRate - 1) / nativeRate);
+				}
+				catch (NumberFormatException ignored)
+				{
+				}
+				playbackBuffer = new PlaybackBuffer(track.getBufferCapacityInFrames(), Math.max(1, rate / 100), burst, track.getUnderrunCount());
+				applyPlaybackBuffer();
 				track.setStartThresholdInFrames(1);
 				if (!track.setPreferredDevice(selected))
 					throw new IOException("Playback route rejected");
@@ -152,6 +182,28 @@ final class StreamIo implements AutoCloseable, Runnable
 		}
 	}
 
+	private void applyPlaybackBuffer() throws IOException
+	{
+		int actual = track.setBufferSizeInFrames(playbackBuffer.size());
+		if (actual <= 0)
+			throw new IOException("AudioTrack buffer adjustment rejected: " + actual);
+		playbackBuffer.applied(actual, track.getBufferCapacityInFrames());
+	}
+
+	private boolean observePlaybackBuffer() throws IOException
+	{
+		// Only called by the writing thread, after Android has accepted data.
+		boolean changed = playbackBuffer.observe(track.getUnderrunCount());
+		// Android may recreate/enlarge the track when preferred routing takes
+		// effect. Reapply the effective limit after that platform transition.
+		if (changed || track.getBufferSizeInFrames() != playbackBuffer.size())
+		{
+			applyPlaybackBuffer();
+			return true;
+		}
+		return false;
+	}
+
 	void activate()
 	{
 		activated.countDown();
@@ -159,7 +211,10 @@ final class StreamIo implements AutoCloseable, Runnable
 
 	private void verifyRoute() throws Exception
 	{
-		long deadline = System.nanoTime() + 700_000_000L;
+		// Failure bound only. Successful readiness is driven by route and
+		// consumed-frame progress, never by sleeping for a guessed delay.
+		long deadline = System.nanoTime() + 5_000_000_000L;
+		long stableFrom = 0;
 		ByteBuffer probe = ByteBuffer.allocateDirect(Math.max(1, rate / 100) * frameBytes).order(ByteOrder.LITTLE_ENDIAN);
 		if (capture)
 			recorder.startRecording();
@@ -173,21 +228,23 @@ final class StreamIo implements AutoCloseable, Runnable
 				result = recorder.read(probe, probe.capacity(), AudioRecord.READ_BLOCKING);
 			else
 				result = track.write(probe, probe.capacity(), AudioTrack.WRITE_BLOCKING);
-			if (capture && result > 0)
+			if (result > 0)
 				probedFrames += result / frameBytes;
 			if (result < 0)
 				throw new IOException("Android route probe failed: " + result);
 			AudioDeviceInfo routed = capture ? recorder.getRoutedDevice() : track.getRoutedDevice();
 			if (routed != null && routed.getId() == selected.getId())
 			{
-				verified = true;
 				if (!capture)
 				{
-					track.pause();
-					track.flush();
-					playbackOrigin = System.nanoTime();
-					track.play();
+					if (observePlaybackBuffer())
+						stableFrom = probedFrames;
+					if (probedFrames - stableFrom < 4L * playbackBuffer.size() || track.getPlaybackHeadPosition() == 0)
+						continue;
 				}
+				verified = true;
+				// Keep the verified route running; exclude probe frames from
+				// the Linux timeline rather than invalidating it with a flush.
 				service.streamRoute(this, routed.getId());
 				return;
 			}
@@ -208,15 +265,45 @@ final class StreamIo implements AutoCloseable, Runnable
 		if (head < playedLast)
 			playedHigh += 1L << 32;
 		playedLast = head;
-		AudioTimestamp timestamp = playbackTimestamp;
 		long time = System.nanoTime();
-		long frame = playedHigh + head;
-		if (track.getTimestamp(timestamp) && timestamp.nanoTime >= playbackOrigin && timestamp.framePosition <= frame)
-		{
-			frame = timestamp.framePosition;
-			time = timestamp.nanoTime;
-		}
+		// A cached AudioTimestamp can stop advancing during an underrun.
+		// Sample the monotonic playback-head counter for drain/progress.
+		long frame = Math.max(0, playedHigh + head - probedFrames);
 		wire.sendPcm(Wire.CLOCK, epoch, Math.min(frame, sentFrames), time, 0, EMPTY, 0);
+		if (presentationClock && frame >= nextPresentationQuery)
+		{
+			// Query on audio progress, at most four times per audio second.
+			// Repeated clock notifications must not become Binder/API polling.
+			nextPresentationQuery = frame + Math.max(1, rate / 4);
+			if (!track.getTimestamp(presentation) || presentation.framePosition < probedFrames)
+				return;
+			long position = presentation.framePosition - probedFrames;
+			// Retain the platform frame/time pair exactly. Its frame position
+			// is a different timeline observation from playback-head progress.
+			if (position <= sentFrames && position >= lastPresentationFrame && presentation.nanoTime > lastPresentationTime && presentation.nanoTime <= time + 2_000_000_000L)
+			{
+				lastPresentationFrame = position;
+				lastPresentationTime = presentation.nanoTime;
+				wire.sendPcm(Wire.PRESENTATION, epoch, position, presentation.nanoTime, 0, EMPTY, 0);
+			}
+		}
+	}
+
+	private void notifyPlaybackClock()
+	{
+		if (!live)
+			return;
+		try
+		{
+			ensureRoute();
+			clock();
+		}
+		catch (Exception failure)
+		{
+			if (live && !service.suspended)
+				routeFailure = failure.getMessage();
+			close();
+		}
 	}
 
 	private void playback() throws Exception
@@ -227,20 +314,11 @@ final class StreamIo implements AutoCloseable, Runnable
 		track.setPlaybackPositionUpdateListener(new AudioTrack.OnPlaybackPositionUpdateListener() {
 			public void onMarkerReached(AudioTrack ignored)
 			{
+				notifyPlaybackClock();
 			}
 			public void onPeriodicNotification(AudioTrack ignored)
 			{
-				try
-				{
-					ensureRoute();
-					clock();
-				}
-				catch (Exception failure)
-				{
-					if (!service.suspended)
-						routeFailure = failure.getMessage();
-					close();
-				}
+				notifyPlaybackClock();
 			}
 		}, new Handler(clockThread.getLooper()));
 		ByteBuffer samples = ByteBuffer.allocateDirect(Math.max(1, rate / 10) * frameBytes).order(ByteOrder.LITTLE_ENDIAN);
@@ -260,7 +338,13 @@ final class StreamIo implements AutoCloseable, Runnable
 				if (written <= 0 || written % frameBytes != 0)
 					throw new IOException("AudioTrack write failed");
 				sentFrames += written / frameBytes;
+				observePlaybackBuffer();
+				if (writeCredit)
+					wire.sendPcm(Wire.CREDIT, epoch, sentFrames, System.nanoTime(), 0, EMPTY, 0);
 			}
+			long marker = probedFrames + sentFrames;
+			if (marker <= Integer.MAX_VALUE)
+				track.setNotificationMarkerPosition((int)marker);
 			nextFrame += packet.frames;
 			clock();
 		}
@@ -322,6 +406,8 @@ final class StreamIo implements AutoCloseable, Runnable
 			}
 			if (failure.isEmpty() && routeFailure != null)
 				failure = routeFailure;
+			if (cancelled)
+				failure = "";
 			service.streamEnded(this, failure);
 		}
 	}
@@ -341,6 +427,23 @@ final class StreamIo implements AutoCloseable, Runnable
 			recorder.removeOnRoutingChangedListener(routeListener);
 			recorder.release();
 		}
+	}
+
+	void cancel()
+	{
+		cancelled = true;
+		close();
+	}
+
+	boolean awaitStopped() throws InterruptedException
+	{
+		Thread active = worker;
+		if (active != null && active != Thread.currentThread())
+		{
+			active.join(2000);
+			return !active.isAlive();
+		}
+		return true;
 	}
 
 	@Override

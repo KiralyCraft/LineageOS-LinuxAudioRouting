@@ -1,0 +1,117 @@
+{
+  "speaker-generic": {
+    "capacity": 15376,
+    "rate": 48000,
+    "queue_ms": 318.0,
+    "timestamp_delay_ms": 341.81,
+    "underruns_first": 0,
+    "underruns_last": 0,
+    "verified": true
+  },
+  "speaker-negotiated": {
+    "capacity": 192,
+    "rate": 48000,
+    "queue_ms": 3.33,
+    "timestamp_delay_ms": 27.22,
+    "underruns_first": 2,
+    "underruns_last": 2,
+    "verified": true
+  },
+  "speaker-burst": {
+    "capacity": 288,
+    "rate": 48000,
+    "queue_ms": 5.0,
+    "timestamp_delay_ms": 29.03,
+    "underruns_first": 0,
+    "underruns_last": 2,
+    "verified": true
+  },
+  "headset-generic": {
+    "capacity": 5152,
+    "rate": 16000,
+    "queue_ms": 310.0,
+    "timestamp_delay_ms": 349.53,
+    "underruns_first": 0,
+    "underruns_last": 0,
+    "verified": true
+  },
+  "headset-negotiated": {
+    "capacity": 644,
+    "rate": 16000,
+    "queue_ms": 40.0,
+    "timestamp_delay_ms": 97.37,
+    "underruns_first": 1,
+    "underruns_last": 1,
+    "verified": true
+  },
+  "headset-burst": {
+    "capacity": 644,
+    "rate": 16000,
+    "queue_ms": 40.0,
+    "timestamp_delay_ms": 97.49,
+    "underruns_first": 1,
+    "underruns_last": 1,
+    "verified": true
+  },
+  "stereo-generic": {
+    "capacity": 15376,
+    "rate": 48000,
+    "queue_ms": 250.0,
+    "timestamp_delay_ms": 617.75,
+    "underruns_first": 0,
+    "underruns_last": 0,
+    "verified": true
+  },
+  "stereo-negotiated": {
+    "capacity": 3844,
+    "rate": 48000,
+    "queue_ms": 47.33,
+    "timestamp_delay_ms": 497.52,
+    "underruns_first": 0,
+    "underruns_last": 0,
+    "verified": true
+  },
+  "stereo-burst": {
+    "capacity": 15376,
+    "rate": 48000,
+    "queue_ms": 250.0,
+    "timestamp_delay_ms": 618.19,
+    "underruns_first": 0,
+    "underruns_last": 0,
+    "verified": true
+  },
+  "driver-0": {
+    "output.2.964222d73e202407d6c9693d": {
+      "before_accept_ms": 108.67,
+      "before_head_ms": 192.67,
+      "startup_ms": 16.0
+    },
+    "output.7.b50587de8e48120d007bdae3": {
+      "before_accept_ms": 347.62,
+      "before_head_ms": 427.62,
+      "startup_ms": 266.31
+    },
+    "output.8.b50587de8e48120d007bdae3": {
+      "before_accept_ms": 683.21,
+      "before_head_ms": 733.21,
+      "startup_ms": 593.21
+    }
+  },
+  "driver-1": {
+    "output.2.964222d73e202407d6c9693d": {
+      "before_accept_ms": 16.0,
+      "before_head_ms": 420.23,
+      "startup_ms": 0.0
+    },
+    "output.7.b50587de8e48120d007bdae3": {
+      "before_accept_ms": 16.0,
+      "before_head_ms": 340.31,
+      "startup_ms": 0.0
+    },
+    "output.8.b50587de8e48120d007bdae3": {
+      "before_accept_ms": 16.0,
+      "before_head_ms": 151.33,
+      "startup_ms": 0.0
+    }
+  }
+}

@@ -11,6 +11,8 @@
 #define AUDIO_PCM_MAGIC UINT32_C(0x50445541)
 #define AUDIO_PCM_DATA 1
 #define AUDIO_PCM_CLOCK 2
+#define AUDIO_PCM_CREDIT 3
+#define AUDIO_PCM_PRESENTATION 4
 typedef struct
 {
 	uint32_t kind;
@@ -26,6 +28,7 @@ int32_t protocol_connect(const char *__name);
 int32_t protocol_transfer(int32_t __socket, void *__data, size_t __length, uint8_t __write, int32_t __timeout);
 int32_t protocol_send_json(int32_t __socket, const cJSON *__message);
 cJSON *protocol_receive_json(int32_t __socket, int32_t __timeout);
+int32_t protocol_encode_pcm_header(uint8_t *__header, const protocol_t *__packet);
 int32_t protocol_send_pcm(int32_t __socket, const protocol_t *__packet);
 int32_t protocol_receive_pcm(int32_t __socket, protocol_t *__packet);
 int32_t protocol_send_descriptor(int32_t __socket, int32_t __descriptor);

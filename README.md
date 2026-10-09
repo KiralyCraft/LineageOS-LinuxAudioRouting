@@ -8,11 +8,11 @@ This is a first hardware-test candidate, not a claim that every phone route is v
 
 A root broker authenticates Linux UID 4000 and the exact Android helper package UID using SO_PEERCRED. It creates a Unix socketpair and passes its endpoints via SCM_RIGHTS. After handoff, audio goes directly between the helper and Linux; the broker handles control only and sleeps until control events or outstanding request deadlines.
 
-The transport copies **uncompressed, unchanged PCM bytes**. Media endpoints use float32 little-endian; Bluetooth SCO uses signed 16-bit little-endian mono. There is no codec, gain adjustment, DSP or sample conversion in the broker, framing, socket worker or FIFO. Byte-level tests include arbitrary float bit patterns and wrapped buffers. The only packet overhead is a 40-byte header; packets contain at most 10 ms of samples. Android position notifications provide playback credits; there is no audio pacing sleep in the streaming path.
+The transport copies **uncompressed, unchanged PCM bytes**. Media endpoints use float32 little-endian; Bluetooth SCO uses signed 16-bit little-endian mono. There is no codec, gain adjustment, DSP or sample conversion in the broker, framing, socket worker or FIFO. Byte-level tests include arbitrary float bit patterns and wrapped buffers. The only packet overhead is a 40-byte header; packets contain at most 10 ms of samples. Negotiated AudioTrack write acknowledgements provide buffer credits; playback position independently controls drain; there is no audio pacing sleep in the streaming path.
 
-PipeWire handles ordinary mixing, Linux volume and device-clock rate adaptation. Android AudioTrack/AudioRecord, its HAL and Bluetooth may also convert formats or use a Bluetooth codec. Therefore “lossless” refers to the Android/Linux PCM transport, not a Bluetooth radio link or every mixer. Capture requests Android's unprocessed source where supported, otherwise voice recognition; the helper enables no audio effects.
+PipeWire handles ordinary mixing, Linux volume and device-clock rate adaptation. Android AudioTrack/AudioRecord, its HAL and Bluetooth may also convert formats or use a Bluetooth codec. Therefore “lossless” refers to the Android/Linux PCM transport, not a Bluetooth radio link or every mixer. Phone capture requests Android's unprocessed source where supported, otherwise voice recognition. Headset microphone mode uses Android's communication source and may include platform processing; the bridge enables no additional audio effects.
 
-Queues are bounded: 20 ms playback credit, an 80 ms playback FIFO, a capture FIFO with 80 ms of burst capacity plus its prefill, and a separate 500 ms maximum cold-start queue (normally empty after startup). The steady-state path bypasses that queue. Queue overruns, malformed packets, sequence/epoch mismatch and lost routes stop the stream and report an error. Capture begins after 20 ms of queued data (40 ms for SCO, covering two observed 20 ms HAL blocks). A temporary empty capture FIFO keeps its samples and recorder, reports no data to PipeWire, and re-primes; PipeWire may expose a gap while actual samples arrive. The bridge does not insert silence or discard captured bytes. Normal playback idle drains its tail; call, unplug and stop intentionally retire the old epoch. A hardware route may have additional buffering, especially Bluetooth.
+Queues are bounded: 20 ms playback credit, an 80 ms playback FIFO, a capture FIFO with 80 ms of burst capacity plus its prefill, and an 80 ms pending queue for hardware-driven endpoints. Older helpers retain a 1500 ms compatibility queue, which can add startup latency. The matched 0.1.5 pair waits for route readiness before requesting graph audio. Queue overruns, malformed packets, sequence/epoch mismatch and lost routes stop the stream and report an error. Capture begins after 20 ms of queued data (40 ms for SCO, covering two observed 20 ms HAL blocks). A temporary empty capture FIFO keeps its samples and recorder, reports no data to PipeWire, and re-primes; PipeWire may expose a gap while actual samples arrive. The bridge does not insert silence or discard captured bytes. Normal playback idle drains its tail; call, unplug and stop intentionally retire the old epoch. A hardware route may have additional buffering, especially Bluetooth.
 
 ## Install and start
 
@@ -36,13 +36,13 @@ The private server uses `/tmp/linux-audio-<UID>/linux-audio` and `/tmp/linux-aud
 
 ## Select devices, volume and Bluetooth profiles
 
-Use the **Sound Settings** desktop menu entry or `linux-audio mixer`. pavucontrol's Output Devices/Input Devices tabs choose the default endpoint; Playback/Recording move individual applications. Device choices are separate virtual nodes rather than ALSA cards. Stereo/headset routes are visibly named.
+Use the **Sound Settings** desktop menu entry or `linux-audio mixer`. pavucontrol's Output Devices/Input Devices tabs choose the default endpoint; Playback/Recording move individual applications. Device choices are separate virtual nodes rather than ALSA cards. Alternative phone microphones share one raw capture path; a conflicting selection is marked busy rather than opening a silent second recorder. Multiple Linux applications can use the same source concurrently. Phone raw capture and headset communication capture use separate paths. Stereo/headset routes are visibly named.
 
 The LXDE tray icon opens a device/application menu. Scroll over it for volume, middle-click to mute, and Ctrl-click for Sound Settings. `linux-audio tray` starts it manually in an existing desktop. The tray and mixer are standard PulseAudio clients of PipeWire; no LXDE fork or duplicate audio transport is needed. Starting them also starts the private server if necessary. The Android helper must still be started visibly once per reboot.
 
 `linux-audio volume up`, `down` and `mute` adjust the private Linux default sink, capped at 100%. No Android media/call volume API is called. Use pavucontrol for per-application volume.
 
-`linux-audioctl list` shows available endpoint keys. `linux-audio profile ENDPOINT headset` or `stereo` selects a Bluetooth group's mode explicitly. Opening its headset microphone/playback requests Android's communication device and suspends stereo for that group. Android restores normal communication ownership when the last headset stream closes. A Linux application must select the corresponding virtual source/sink; pavucontrol does not expose these as an ALSA Configuration-tab profile.
+`linux-audioctl list` shows available endpoint keys. `linux-audio profile ENDPOINT headset` or `stereo` selects a Bluetooth group's mode explicitly. Opening its headset microphone/playback requests Android's communication device and suspends stereo for that group. Explicit Stereo selection closes headset streams and prevents an application from reopening the headset microphone until Headset is selected again. The selected profile is held for the running helper; it is not persisted across helper restarts. For automatic headset use, Android communication ownership is released when the last headset stream closes; an explicitly selected Headset profile stays selected until Stereo is chosen or the device disconnects. A Linux application must select the corresponding virtual source/sink; pavucontrol does not expose these as an ALSA Configuration-tab profile.
 
 On headphone disconnect, the selected node stays present but unavailable, so it does not automatically become the speaker node. The helper stops its track when its verified route changes. Android can reroute already-buffered hardware audio before an app callback; preventing that system-level transition absolutely would require a lower-level Android policy change.
 
@@ -65,3 +65,23 @@ build-support/package.py SOURCE OUTPUT RELEASE_DIRECTORY
 ```
 
 The private signing key stays on the build server and is never packaged. The manifest records source/artifact hashes, compiler versions, certificate identity and test status. Project native code is C99 and uses `.clang-format`; cJSON 1.7.19 is vendored with its upstream license.
+
+### 0.1.5 latency candidate
+
+This release coordinates Android-driven graph demand, adaptive effective
+AudioTrack buffers, and native presentation timestamps propagated into PipeWire
+latency reporting. It does not promise to eliminate Bluetooth codec/transport
+delay; correct reporting lets applications account for that delay when
+synchronizing video. The PCM transport remains unchanged and uncompressed.
+
+Use the matched APK and Linux bundle. The existing broker passes PCM descriptors
+and negotiated metadata unchanged, so this candidate does not require a Magisk
+update for live testing. After installing the APK and tapping Start, restart the
+Linux bridge to pick up the new endpoint capability. Runtime pacing is enabled
+for capable helpers, with `LINUX_AUDIO_CLOCK_DRIVER=0` as the compatibility
+opt-out. `LINUX_AUDIO_TIMING=1` enables bounded counter/latency diagnostics.
+
+Validation separates isolated graph tests, root Android policy probes, and
+ordinary-helper live tests. See `diagnostics/android-routing/LATENCY-20261009.md`;
+YouTube synchronization, simultaneous physical microphones, calls, unplug and
+long-running stability still require validation with the matched installed pair.

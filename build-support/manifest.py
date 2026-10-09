@@ -8,12 +8,13 @@ result=dict(schema=1,build_host='root@192.168.104.201',transport='Authenticated 
 for name in ['apk','startup','desktop','install']:
     test=build/'tests'/(name+'.log')
     if test.exists() and 'PASS ' in test.read_text():result['validation'][name]='PASS'
-physical=build/'tests/physical-microphone.json'
-if physical.exists():
-    result['validation']['physical_microphone']=json.loads(physical.read_text())
-    result['validation']['physical_audio']='Partial: background phone/Bluetooth microphone verified; audible playback, calls, doze and long soak pending'
-log=build/'tests/integration.log'
-if log.exists() and 'PASS isolated production PipeWire/native stack' in log.read_text():
-    result['validation']['isolated_pipewire']='PASS; simulated Android endpoints, production native binaries'
-else:result['validation']['isolated_pipewire']='pending'
+# A stale test log is not evidence for a newly linked binary or APK.
+result['validation']['isolated_pipewire']='pending'
+attestation=build/'tests/integration-attestation.json'
+if attestation.exists():
+    evidence=json.loads(attestation.read_text())
+    matched=evidence.get('result')=='PASS' and evidence.get('script_sha256')==digest(source/'tests/integration.py')
+    matched=matched and all((build/name).is_file() and digest(build/name)==sha for name,sha in evidence.get('artifacts',{}).items())
+    if matched and len(evidence.get('artifacts',{}))==3:
+        result['validation']['isolated_pipewire']=evidence
 (build/'manifest.json').write_text(json.dumps(result,indent=2)+'\n')

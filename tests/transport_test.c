@@ -25,6 +25,7 @@ int main(int __argc, char **__argv)
 	cJSON_Delete(_inventory);
 	uint8_t _headset = strcmp(__argv[2], "capture-headset") == 0;
 	uint8_t _capture = strcmp(__argv[2], "capture") == 0 || _headset != 0;
+	uint8_t _expectIncomplete = strcmp(__argv[2], "playback-incomplete") == 0;
 	cJSON *_device = cJSON_CreateObject();
 	protocol_set_string(_device, "key", __argv[3]);
 	protocol_set_string(_device, "direction", "output");
@@ -91,9 +92,17 @@ int main(int __argc, char **__argv)
 		}
 		_offset += _length;
 	}
-	if (_offset != 20000 || (_capture == 0 && transport_drain(&_transport) != 0))
+	if (_offset != 20000)
 	{
 		_result = -1;
+	}
+	if (_capture == 0)
+	{
+		uint8_t _incomplete = transport_drain(&_transport) != 0;
+		if (_incomplete != _expectIncomplete)
+		{
+			_result = -1;
+		}
 	}
 	transport_stop(&_transport);
 	control_stop(&_control);
