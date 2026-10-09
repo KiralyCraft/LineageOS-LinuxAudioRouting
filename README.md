@@ -6,7 +6,7 @@ This is a first hardware-test candidate, not a claim that every phone route is v
 
 ## Transport
 
-A root broker authenticates Linux UID 4000 and the exact Android helper package UID using SO_PEERCRED. It creates a Unix socketpair and passes its endpoints via SCM_RIGHTS. After handoff, audio goes directly between the helper and Linux; the broker handles control only.
+A root broker authenticates Linux UID 4000 and the exact Android helper package UID using SO_PEERCRED. It creates a Unix socketpair and passes its endpoints via SCM_RIGHTS. After handoff, audio goes directly between the helper and Linux; the broker handles control only and sleeps until control events or outstanding request deadlines.
 
 The transport copies **uncompressed, unchanged PCM bytes**. Media endpoints use float32 little-endian; Bluetooth SCO uses signed 16-bit little-endian mono. There is no codec, gain adjustment, DSP or sample conversion in the broker, framing, socket worker or FIFO. Byte-level tests include arbitrary float bit patterns and wrapped buffers. The only packet overhead is a 40-byte header; packets contain at most 10 ms of samples. Android position notifications provide playback credits; there is no audio pacing sleep in the streaming path.
 

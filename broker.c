@@ -691,6 +691,59 @@ static void _broker_accept(broker_t *__broker)
 	close(_socket);
 }
 
+static void _broker_deadline(uint64_t *__earliest, uint64_t __deadline)
+{
+	if (__deadline != 0 && __deadline < *__earliest)
+	{
+		*__earliest = __deadline;
+	}
+}
+
+static int32_t _broker_timeout(const broker_t *__broker)
+{
+	uint64_t _earliest = UINT64_MAX;
+	for (size_t _index = 0; _index < BROKER_PENDING; ++_index)
+	{
+		if (__broker->pending[_index].forwarded != 0)
+		{
+			_broker_deadline(&_earliest, __broker->pending[_index].deadline);
+		}
+	}
+	for (size_t _index = 0; _index < BROKER_STREAMS; ++_index)
+	{
+		const broker_stream_t *_stream = &__broker->streams[_index];
+		if (_stream->live != 0 && (_stream->linuxDescriptor >= 0 || _stream->androidDescriptor >= 0))
+		{
+			_broker_deadline(&_earliest, _stream->attachDeadline);
+		}
+	}
+	for (size_t _index = 0; _index < BROKER_PEERS; ++_index)
+	{
+		const broker_peer_t *_peer = &__broker->peers[_index];
+		if (_peer->socket >= 0)
+		{
+			_broker_deadline(&_earliest, _peer->handshakeDeadline);
+			_broker_deadline(&_earliest, _peer->framing.readDeadline);
+			_broker_deadline(&_earliest, _peer->framing.writeDeadline);
+		}
+	}
+	if (_earliest == UINT64_MAX)
+	{
+		return -1; /* No periodic wakeup once control and FD handoff are complete. */
+	}
+	uint64_t _now = protocol_now();
+	if (_earliest <= _now)
+	{
+		return 0;
+	}
+	uint64_t _milliseconds = (_earliest - _now + 999999) / 1000000;
+	if (_milliseconds > INT32_MAX)
+	{
+		return INT32_MAX;
+	}
+	return (int32_t)_milliseconds;
+}
+
 static int32_t _broker_run(broker_t *__broker)
 {
 	__broker->listener = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
@@ -722,7 +775,7 @@ static int32_t _broker_run(broker_t *__broker)
 				_poll[_index + 1].events |= POLLOUT;
 			}
 		}
-		if (poll(_poll, BROKER_PEERS + 1, 50) < 0 && errno != EINTR)
+		if (poll(_poll, BROKER_PEERS + 1, _broker_timeout(__broker)) < 0 && errno != EINTR)
 		{
 			break;
 		}

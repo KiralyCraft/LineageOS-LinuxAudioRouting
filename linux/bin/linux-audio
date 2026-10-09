@@ -56,6 +56,8 @@ case $AUDIO_OPERATION in
             kill -0 "$AUDIO_PID" 2>/dev/null || break
             sleep .05
         done
+        kill "$AUDIO_PID" 2>/dev/null || true
+        wait "$AUDIO_PID" 2>/dev/null || true
         printf 'Audio startup failed; see %s\n' "$AUDIO_RUNTIME/supervisor.log" >&2
         exit 1
         ;;
