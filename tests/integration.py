@@ -140,7 +140,7 @@ def helper_loop(helper):
                 # Keep one legacy endpoint to exercise negotiated fallback.
                 request['shared_pcm']=bool(request.get('shared_pcm'))
                 request['write_credit']=bool(request.get('write_credit')) and request['endpoint']!='fixture.alternate' and not request['endpoint'].endswith('input')
-                send(helper,dict(op='reply',id=request['id'],ok=True,stream=request['stream'],epoch=request['epoch'],token=request['token'],shared_pcm=request['shared_pcm'],write_credit=request['write_credit'],presentation_clock=request.get('presentation_clock',False)))
+                send(helper,dict(op='reply',id=request['id'],ok=True,stream=request['stream'],epoch=request['epoch'],token=request['token'],shared_pcm=request['shared_pcm'],shared_pcm_owner='android',write_credit=request['write_credit'],presentation_clock=request.get('presentation_clock',False)))
             elif op=='activate':
                 d,r=direct[request['stream']]
                 send(helper,dict(op='route',stream=r['stream'],epoch=r['epoch'],endpoint=r['endpoint'],actual_android_id=1,verified=True))
@@ -182,6 +182,7 @@ with tempfile.TemporaryDirectory(prefix='audio-pw-') as directory:
         native_devices=[dict(devices[1],key='fixture.native.input'),dict(devices[1],key='fixture.native.output',direction='output'),dict(devices[-1],key='fixture.native.headset.input')]
         native_devices.append(dict(native_devices[1],key='fixture.native.undrained'))
         for device in devices+native_devices:
+            device['shared_pcm_owner']='android'
             device['shared_pcm']=os.environ.get('AUDIO_SHARED_FIXTURE')=='1' and device['key']!='fixture.alternate'
         send(helper,dict(op='inventory',devices=devices+native_devices,suspended=False,reason=''))
         time.sleep(.05)

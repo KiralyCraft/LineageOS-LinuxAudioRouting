@@ -87,7 +87,7 @@ final class StreamIo implements AutoCloseable, Runnable
 		capture = device.getString("direction").equals("input");
 		captureSource = device.optInt("capture_source", MediaRecorder.AudioSource.UNPROCESSED);
 		writeCredit = !capture && request.optBoolean("write_credit", false);
-		sharedPcm = request.optBoolean("shared_pcm", false);
+		sharedPcm = request.optBoolean("shared_pcm", false) && request.optString("shared_pcm_owner").equals("android");
 		// MMAP Bluetooth timestamps have not been calibrated to acoustic output.
 		presentationClock = !capture && request.optBoolean("presentation_clock", false) && (!sharedPcm || (selected.getType() != AudioDeviceInfo.TYPE_BLUETOOTH_A2DP && selected.getType() != AudioDeviceInfo.TYPE_BLUETOOTH_SCO));
 		headset = device.getString("profile").equals("headset");

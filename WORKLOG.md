@@ -145,3 +145,34 @@ concurrent destinations, a live application move, retained busy/unplugged nodes,
 and simulated call/reconnect. Exact native artifact and test hashes are recorded
 in `diagnostics/android-routing/shared-016-validation-20261009.json`. These are
 transport/graph acceptance results, not physical AAudio/codec latency acceptance.
+
+
+## 0.1.6 live result and 0.1.7 correction (2026-10-09)
+
+Verified manual installation of helper 0.1.6/code 7 and switched only the owned
+bridge. First speaker open reached AAudio shared MMAP, 48 kHz stereo, 96-frame
+burst; it failed before playback. Logcat records untrusted_app denied read/write
+on Linux's memfd labelled `tmpfs`. The live enforcing policy has the transition
+`untrusted_app tmpfs:file -> appdomain_tmpfs` and allows the app read/write/map on
+that type. This was an allocation-owner error, not evidence of an AAudio routing
+or hardware failure. No SELinux state was changed.
+
+Restored the running 0.1.5 bridge behind the existing supervisor and preserved
+phone-bottom/stereo defaults and volumes. The installed 0.1.6 helper supports
+that socket fallback. Candidate 0.1.7 reverses descriptor transfer: Android owns
+creation; Linux validates and maps. Explicit shared_pcm_owner=android negotiation
+keeps mixed-version peers on the socket fallback. Tests simulate Android-owned
+creation, and native resource/epoch validation remains mandatory. Android now
+logs terminal stream errors as well as presenting them in the app.
+
+Both 0.1.7 isolated suites passed (shared allocation from the Android fixture,
+and legacy socket mode), with fresh binary/test hash attestations. The live SBC
+socket-path reference returned 206 Pulse client latency observations, median
+349.985 ms and maximum 378.522 ms. This is reported stream timing, including
+queueing, not an acoustic measurement or a controlled SBC/AAC comparison.
+
+The 0.1.7 bridge was then staged behind the existing supervisor with installed
+helper 0.1.6. Missing allocation-owner capability correctly selected sockets.
+A stereo WAV completed and the bottom microphone returned 330752 frames in
+7.015 s (325948 nonzero samples), with no client error. Defaults remain bottom
+microphone/stereo headphones. The 0.1.7 APK native path still awaits installation.

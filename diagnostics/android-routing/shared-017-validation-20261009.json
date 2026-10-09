@@ -1,0 +1,44 @@
+{
+  "integration-attestation.json": {
+    "artifacts": {
+      "native/linux-audio-bridge": "06ce9fe3293e7ccdb7b74c565731dcfb9ab2d0f11f376527bf6d678aafb829fd",
+      "tests/broker-arm": "2249684a9d8fb4f0b9aba65eff6f8cf2dac79bd9478087bc4507272e43247721",
+      "tests/transport-fixture": "6af5d151697e744d5bc350c7718228223d772eaaf20b79af4d27e01b0cc9c6d8"
+    },
+    "script_sha256": "aa4e8af21a72077fb6cc59ffb683d61599cd108a1d027063e02999da31f86da0",
+    "clock_driver": "negotiated",
+    "shared_pcm": false,
+    "shared_fixture_sha256": "4c053a439bd0b6a92e60738b31c107be3f15d33cf183d664d87ec42afbaae517",
+    "result": "PASS"
+  },
+  "integration-shared-attestation.json": {
+    "artifacts": {
+      "native/linux-audio-bridge": "06ce9fe3293e7ccdb7b74c565731dcfb9ab2d0f11f376527bf6d678aafb829fd",
+      "tests/broker-arm": "2249684a9d8fb4f0b9aba65eff6f8cf2dac79bd9478087bc4507272e43247721",
+      "tests/transport-fixture": "6af5d151697e744d5bc350c7718228223d772eaaf20b79af4d27e01b0cc9c6d8"
+    },
+    "script_sha256": "aa4e8af21a72077fb6cc59ffb683d61599cd108a1d027063e02999da31f86da0",
+    "clock_driver": "negotiated",
+    "shared_pcm": true,
+    "shared_fixture_sha256": "4c053a439bd0b6a92e60738b31c107be3f15d33cf183d664d87ec42afbaae517",
+    "result": "PASS"
+  },
+  "installed_016_test": {
+    "aaudio_open": "shared MMAP 48k stereo, 96-frame burst",
+    "pcm_handoff": "FAILED: SELinux denied untrusted_app read/write of Linux-owned tmpfs memfd",
+    "enforcement": "Enforcing; unchanged"
+  },
+  "live_017_bridge_016_helper": {
+    "transport": "legacy socket, allocation-owner capability absent",
+    "stereo_wav": "client completed successfully; route verified Android 38",
+    "phone_mic": {
+      "duration_seconds": 7.015,
+      "frames": 330752,
+      "nonzero_samples": 325948,
+      "peak": 0.0005061420379206538,
+      "client_error": "",
+      "source": "linux-audio.input.15.be9b7607e070383c083b082c"
+    }
+  },
+  "native_017_audio": "pending manual APK installation; no live native latency result"
+}

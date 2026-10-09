@@ -206,7 +206,7 @@ public final class AudioService extends Service
 			stream.prepare(request);
 			if (suspended || policy.priorityCall())
 				throw new IOException("Android call started during setup");
-			send(new JSONObject().put("op", "reply").put("id", request.getLong("id")).put("ok", true).put("stream", stream.id).put("epoch", stream.epoch).put("token", request.getString("token")).put("rate", stream.rate).put("channels", stream.channels).put("format", stream.format).put("shared_pcm", stream.sharedPcm).put("write_credit", stream.writeCredit).put("presentation_clock", stream.presentationClock).put("verified", false));
+			send(new JSONObject().put("op", "reply").put("id", request.getLong("id")).put("ok", true).put("stream", stream.id).put("epoch", stream.epoch).put("token", request.getString("token")).put("rate", stream.rate).put("channels", stream.channels).put("format", stream.format).put("shared_pcm", stream.sharedPcm).put("shared_pcm_owner", "android").put("write_credit", stream.writeCredit).put("presentation_clock", stream.presentationClock).put("verified", false));
 			publishInventory();
 		}
 		catch (Exception failure)
@@ -342,6 +342,7 @@ public final class AudioService extends Service
 		}
 		if (!failure.isEmpty())
 		{
+			android.util.Log.e("LinuxAudio", "Stream " + stream.id + " stopped: " + failure);
 			status("Audio stopped: " + failure);
 		}
 		if (operations != null)

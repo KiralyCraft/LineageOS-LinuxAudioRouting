@@ -77,11 +77,14 @@ route-preparation deadline is a failure bound, not a playback delay.
 ## Shared PCM and native AAudio (0.1.6)
 
 Endpoint capability, open request and open reply must all agree on
-`shared_pcm:true`. Missing capability or `LINUX_AUDIO_SHARED_PCM=0` retains the
+`shared_pcm:true` and `shared_pcm_owner:"android"` (since 0.1.7). Missing capability or `LINUX_AUDIO_SHARED_PCM=0` retains the
 existing packet protocol. The authenticated broker is unchanged. After direct
-socket handoff Linux sends three `F`/SCM_RIGHTS messages in order: sealed-size
-memfd, producer eventfd, consumer eventfd. Android validates descriptor type,
-size/seals, version, epoch, format and capacity before starting AAudio. The socket
+socket handoff Android sends three `F`/SCM_RIGHTS messages in order: sealed-size
+memfd, producer eventfd, consumer eventfd. Linux validates descriptor type,
+size/seals, version, epoch, format and capacity before permitting graph processing. Android creates the allocation in its own
+SELinux domain; no generic-tmpfs permission exception is installed. Native
+activation precedes descriptor receipt, so allocation handoff does not depend on
+graph production starting. The socket
 then carries no PCM; shutdown/HUP cancels the epoch.
 
 The ABI is little-endian AArch64 with naturally aligned fixed-width fields,

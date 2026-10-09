@@ -110,3 +110,13 @@ to codec/headset delay is validated. A low MMAP timestamp does not prove low
 acoustic latency. The user's SBC selection is preserved; Android's negotiated
 codec must be recorded for latency comparisons. Ordinary-app routing, capture,
 call recovery, headset latency and long-running stability remain live-test gates.
+
+### 0.1.7 allocation ownership correction
+
+The first ordinary-app 0.1.6 test opened AAudio MMAP successfully, but enforcing
+SELinux rejected the Linux-created memfd (`tmpfs` label). Version 0.1.7 creates
+and exports the ring in the Android helper, using the existing app-domain tmpfs
+transition. Linux validates and imports it. No SELinux rules or enforcement mode
+are changed. Allocation ownership is negotiated explicitly, so mixed 0.1.6 and
+0.1.7 pairs choose the legacy socket path instead of disagreeing about which peer
+sends descriptors. This correction still needs installed-helper validation.

@@ -1,17 +1,22 @@
 """Mock Android hardware, using real shared descriptors and release/acquire atomics."""
-import array, ctypes, ctypes.util, mmap, os, select, socket, struct, time
+import array, fcntl, ctypes, ctypes.util, mmap, os, select, socket, struct, time
 
 class SharedFixture:
     def __init__(self, sock, request):
         self.sock=sock; self.request=request; self.fds=[]; self.memory=None
         try:
-            for _ in range(3):
-                marker,anc,flags,_=sock.recvmsg(1,socket.CMSG_SPACE(32))
-                received=array.array('i')
-                for level,kind,data in anc:
-                    if level==socket.SOL_SOCKET and kind==socket.SCM_RIGHTS:received.frombytes(data)
-                self.fds.extend(received)
-                assert marker==b'F' and len(received)==1 and not flags
+            rate=request['rate'];channels=request['channels'];sample=2 if request['format']=='s16le' else 4
+            capture=request['endpoint'].endswith('input')
+            capacity=rate*80//1000
+            if capture:capacity+=rate//(25 if sample==2 else 50)
+            capacity*=channels*sample
+            memory=os.memfd_create('audio-fixture',os.MFD_CLOEXEC|os.MFD_ALLOW_SEALING)
+            self.fds.append(memory);os.ftruncate(memory,4096+capacity)
+            fcntl.fcntl(memory,fcntl.F_ADD_SEALS,fcntl.F_SEAL_SHRINK|fcntl.F_SEAL_GROW|fcntl.F_SEAL_SEAL)
+            self.fds.extend([os.eventfd(0,os.EFD_CLOEXEC|os.EFD_NONBLOCK),os.eventfd(0,os.EFD_CLOEXEC|os.EFD_NONBLOCK)])
+            header=struct.pack('<IIQIIIIQ',0x53445541,1,request['epoch'],rate,channels,sample,int(capture),capacity)
+            os.pwrite(memory,header,0)
+            for fd in self.fds:sock.sendmsg([b'F'],[(socket.SOL_SOCKET,socket.SCM_RIGHTS,array.array('i',[fd]))])
             size=os.fstat(self.fds[0]).st_size
             self.memory=mmap.mmap(self.fds[0],size)
             self.address=ctypes.addressof(ctypes.c_char.from_buffer(self.memory))

@@ -23,6 +23,7 @@ typedef struct
 	uint32_t rate;
 	uint32_t channels;
 	uint32_t sampleBytes;
+	size_t capacity;
 	uint8_t capture;
 	uint8_t presentation;
 	int32_t device;
@@ -72,6 +73,19 @@ JNIEXPORT jlong JNICALL Java_dev_kiraly_linuxaudio_NativeAudio_create(JNIEnv *__
 	_backend->channels = (uint32_t)__channels;
 	_backend->sampleBytes = (uint32_t)__sampleBytes;
 	_backend->capture = __capture;
+	_backend->capacity = (size_t)__rate * 80 / 1000;
+	if (__capture)
+	{
+		if (__headset)
+		{
+			_backend->capacity += (size_t)__rate / 25;
+		}
+		else
+		{
+			_backend->capacity += (size_t)__rate / 50;
+		}
+	}
+	_backend->capacity *= (size_t)__channels * __sampleBytes;
 	_backend->epoch = (uint64_t)__epoch;
 	_backend->presentation = __presentation;
 	AAudioStreamBuilder *_builder = NULL;
@@ -208,10 +222,10 @@ JNIEXPORT void JNICALL Java_dev_kiraly_linuxaudio_NativeAudio_run(JNIEnv *__env,
 		_aaudio_backend_throw(__env, "Native audio socket duplication failed");
 		return;
 	}
-	if (shared_receive(_shared, _socket, _backend->epoch, _backend->rate, _backend->channels, _backend->sampleBytes, _backend->capture) != 0)
+	if (shared_create(_shared, _backend->epoch, _backend->rate, _backend->channels, _backend->sampleBytes, _backend->capture, _backend->capacity) != 0 || shared_send(_shared, _socket) != 0)
 	{
 		close(_socket);
-		_aaudio_backend_throw(__env, "Invalid shared PCM descriptors or format");
+		_aaudio_backend_throw(__env, "Unable to export Android-owned shared PCM");
 		return;
 	}
 	bool (*_isMmap)(AAudioStream *) = dlsym(RTLD_DEFAULT, "AAudioStream_isMMapUsed");

@@ -30,6 +30,7 @@ int main(int __argc, char **__argv)
 	protocol_set_string(_device, "key", __argv[3]);
 	const char *_shared = getenv("AUDIO_SHARED_FIXTURE");
 	protocol_set_boolean(_device, "shared_pcm", _shared != NULL && strcmp(_shared, "1") == 0);
+	protocol_set_string(_device, "shared_pcm_owner", "android");
 	protocol_set_string(_device, "direction", "output");
 	if (_capture != 0)
 	{

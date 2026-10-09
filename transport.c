@@ -307,13 +307,14 @@ int32_t transport_start(transport_t *__transport, control_t *__control, const cJ
 	protocol_set_string(_request, "op", "open");
 	protocol_set_boolean(_request, "write_credit", 1);
 	protocol_set_boolean(_request, "presentation_clock", 1);
-	uint8_t _shared = protocol_boolean(__device, "shared_pcm");
+	uint8_t _shared = protocol_boolean(__device, "shared_pcm") && strcmp(protocol_string(__device, "shared_pcm_owner"), "android") == 0;
 	const char *_sharedOption = getenv("LINUX_AUDIO_SHARED_PCM");
 	if (_sharedOption != NULL && strcmp(_sharedOption, "0") == 0)
 	{
 		_shared = 0;
 	}
 	protocol_set_boolean(_request, "shared_pcm", _shared);
+	protocol_set_string(_request, "shared_pcm_owner", "android");
 	protocol_set_string(_request, "endpoint", protocol_string(__device, "key"));
 	protocol_set_number(_request, "generation", __generation);
 	uint64_t _openStart = protocol_now();
@@ -327,7 +328,7 @@ int32_t transport_start(transport_t *__transport, control_t *__control, const cJ
 	}
 	__transport->stream = protocol_number(_reply, "stream", 0);
 	__transport->writeCredit = protocol_boolean(_reply, "write_credit");
-	__transport->sharedPcm = _shared && protocol_boolean(_reply, "shared_pcm");
+	__transport->sharedPcm = _shared && protocol_boolean(_reply, "shared_pcm") && strcmp(protocol_string(_reply, "shared_pcm_owner"), "android") == 0;
 	__transport->presentationClock = protocol_boolean(_reply, "presentation_clock");
 	fprintf(stderr, "PCM open %s: stream=%llu rate=%u channels=%u sample_bytes=%u write_credit=%u open_ms=%.3f\n", protocol_string(__device, "key"), (unsigned long long)__transport->stream, __transport->rate, __transport->channels, __transport->sampleBytes, __transport->writeCredit, (double)(protocol_now() - _openStart) / 1000000.0);
 	__transport->epoch = protocol_number(_reply, "epoch", 0);
@@ -351,8 +352,9 @@ int32_t transport_start(transport_t *__transport, control_t *__control, const cJ
 	}
 	if (__transport->sharedPcm != 0)
 	{
-		if (shared_create(&__transport->shared, __transport->epoch, __transport->rate, __transport->channels, __transport->sampleBytes, __transport->capture, _capacity) != 0 || shared_send(&__transport->shared, __transport->socket) != 0)
+		if (shared_receive(&__transport->shared, __transport->socket, __transport->epoch, __transport->rate, __transport->channels, __transport->sampleBytes, __transport->capture) != 0 || __transport->shared.ring.capacity != _capacity)
 		{
+			snprintf(__transport->error, sizeof(__transport->error), "Android shared PCM descriptor handoff failed");
 			return -1;
 		}
 		__transport->ring = __transport->shared.ring;
