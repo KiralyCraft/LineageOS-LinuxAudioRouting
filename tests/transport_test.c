@@ -23,7 +23,8 @@ int main(int __argc, char **__argv)
 	cJSON_Delete(_request);
 	uint64_t _generation = protocol_number(_inventory, "generation", 0);
 	cJSON_Delete(_inventory);
-	uint8_t _capture = strcmp(__argv[2], "capture") == 0;
+	uint8_t _headset = strcmp(__argv[2], "capture-headset") == 0;
+	uint8_t _capture = strcmp(__argv[2], "capture") == 0 || _headset != 0;
 	cJSON *_device = cJSON_CreateObject();
 	protocol_set_string(_device, "key", __argv[3]);
 	protocol_set_string(_device, "direction", "output");
@@ -33,6 +34,12 @@ int main(int __argc, char **__argv)
 	}
 	protocol_set_string(_device, "format", "f32le");
 	protocol_set_number(_device, "rate", 48000);
+	if (_headset != 0)
+	{
+		protocol_set_number(_device, "rate", 16000);
+		protocol_set_string(_device, "format", "s16le");
+		protocol_set_string(_device, "profile", "headset");
+	}
 	protocol_set_number(_device, "channels", 1);
 	transport_t _transport;
 	int32_t _result = transport_start(&_transport, &_control, _device, _generation, NULL, NULL);

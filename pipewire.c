@@ -29,6 +29,10 @@ typedef struct
 	uint8_t opened;
 	uint8_t capture;
 	uint32_t frameBytes;
+	uint32_t captureNeed;
+	uint32_t captureHave;
+	uint64_t captureUnderruns;
+	uint64_t reportedUnderruns;
 	uint64_t failedGeneration;
 	uint64_t clockFrame;
 	uint64_t clockTime;
@@ -146,10 +150,20 @@ static void _pipewire_buffer(pipewire_endpoint_t *__endpoint, struct pw_buffer *
 				_requested = (size_t)_buffer->requested * _endpoint->frameBytes;
 			}
 			_requested -= _requested % _endpoint->frameBytes;
-			_length = ring_read(&_endpoint->transport.ring, _data->data, _requested);
-			if (_length < _requested)
+			size_t _available = ring_available(&_endpoint->transport.ring);
+			if (_available >= _requested)
 			{
-				transport_fail(&_endpoint->transport);
+				_length = ring_read(&_endpoint->transport.ring, _data->data, _requested);
+			}
+			else
+			{
+				/* A graph deadline precedes data arrival, not a PCM discontinuity.
+				 * Retain all captured bytes and re-prime the existing recorder.
+				 * Empty output reports no data; the transport invents no samples. */
+				__atomic_store_n(&_endpoint->captureNeed, (uint32_t)(_requested / _endpoint->frameBytes), __ATOMIC_RELAXED);
+				__atomic_store_n(&_endpoint->captureHave, (uint32_t)(_available / _endpoint->frameBytes), __ATOMIC_RELAXED);
+				__atomic_fetch_add(&_endpoint->captureUnderruns, 1, __ATOMIC_RELAXED);
+				__atomic_store_n(&_endpoint->transport.ready, 0, __ATOMIC_RELEASE);
 			}
 		}
 		_data->chunk->offset = 0;
@@ -460,7 +474,7 @@ static void _pipewire_reconcile(pipewire_t *__owner, const cJSON *__inventory)
 			if (__atomic_load_n(&_endpoint->transport.failed, __ATOMIC_ACQUIRE) != 0)
 			{
 				_endpoint->failedGeneration = _generation;
-				fprintf(stderr, "PCM stream failed: %s; no samples silently dropped\n", _endpoint->key);
+				fprintf(stderr, "PCM stream failed: %s code=%d; capture requested=%u available=%u frames; no samples silently dropped\n", _endpoint->key, __atomic_load_n(&_endpoint->transport.failed, __ATOMIC_ACQUIRE), __atomic_load_n(&_endpoint->captureNeed, __ATOMIC_RELAXED), __atomic_load_n(&_endpoint->captureHave, __ATOMIC_RELAXED));
 			}
 			_pipewire_stop_endpoint(_endpoint, _wanted == 0 && _endpoint->present != 0 && _suspended == 0 && transport_live(&_endpoint->transport) != 0);
 		}
@@ -487,6 +501,12 @@ static void _pipewire_reconcile(pipewire_t *__owner, const cJSON *__inventory)
 		if (_accepting == 0 && _endpoint->opened == 0)
 		{
 			_pipewire_pending(_endpoint, 0);
+		}
+		uint64_t _underruns = __atomic_load_n(&_endpoint->captureUnderruns, __ATOMIC_RELAXED);
+		if (_underruns != _endpoint->reportedUnderruns)
+		{
+			fprintf(stderr, "Capture re-prime: %s count=%llu requested=%u available=%u frames; recorder retained\n", _endpoint->key, (unsigned long long)_underruns, __atomic_load_n(&_endpoint->captureNeed, __ATOMIC_RELAXED), __atomic_load_n(&_endpoint->captureHave, __ATOMIC_RELAXED));
+			_endpoint->reportedUnderruns = _underruns;
 		}
 		char _label[320];
 		snprintf(_label, sizeof(_label), "%s", _endpoint->label);

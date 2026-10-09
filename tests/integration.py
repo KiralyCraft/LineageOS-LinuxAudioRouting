@@ -3,7 +3,7 @@
 import array, json, os, pathlib, select, socket, struct, subprocess, sys, tempfile, threading, time
 source, build = map(pathlib.Path,sys.argv[1:])
 name='linux-audio-pw-fixture-'+str(os.getpid())
-processes=[]; errors=[]; samples=bytearray(); alternate_samples=bytearray(); native_samples=bytearray(); workers=[]; direct={}; sendlock=threading.Lock()
+processes=[]; opens=[]; errors=[]; samples=bytearray(); alternate_samples=bytearray(); native_samples=bytearray(); workers=[]; direct={}; sendlock=threading.Lock()
 def exact(sock,n):
     data=bytearray()
     while len(data)<n:
@@ -43,21 +43,31 @@ def consume(d,request):
     except (EOFError,OSError):pass
     except Exception as e:errors.append(repr(e))
 def produce(d,request):
-    frame=0;deadline=time.monotonic()
+    frame=0;deadline=time.monotonic();periods=0;stalled=False
+    headset=request.get('format')=='s16le';width=2 if headset else 4
+    frames=request['rate']//50 if headset else request['rate']//100
+    period=frames/request['rate']
     try:
         while True:
-            payload=struct.pack('<480f',*([.25]*480))
-            if request['endpoint'].startswith('fixture.native'):payload=bytes(((i*31)^(i>>8))&255 for i in range(frame*4,(frame+480)*4))
-            d.sendall(header.pack(0x50445541,1,request['epoch'],frame,time.monotonic_ns(),480,len(payload))+payload)
-            frame+=480;deadline+=.01;time.sleep(max(0,deadline-time.monotonic()))
+            payload=struct.pack('<'+str(frames)+'f',*([.25]*frames))
+            if headset:payload=struct.pack('<'+str(frames)+'h',*([8192]*frames))
+            if request['endpoint'].startswith('fixture.native'):payload=bytes(((i*31)^(i>>8))&255 for i in range(frame*width,(frame+frames)*width))
+            d.sendall(header.pack(0x50445541,1,request['epoch'],frame,time.monotonic_ns(),frames,len(payload))+payload)
+            frame+=frames;periods+=1;deadline+=period
+            if request['endpoint']=='fixture.headset.input' and not stalled and frame>=request['rate']//10:
+                deadline+=.08;stalled=True
+            jitter=.005 if headset and periods%2 else 0
+            time.sleep(max(0,deadline+jitter-time.monotonic()))
     except OSError:pass
     except Exception as e:errors.append(repr(e))
+
 def helper_loop(helper):
     try:
         while True:
             request=recv(helper);op=request['op']
             print('Helper request',op,request.get('endpoint',''),request.get('stream',''),flush=True)
             if op=='open':
+                opens.append(request['endpoint'])
                 # A deliberate cold-open delay tests Linux's retention path.
                 time.sleep(.04)
                 d=attach(request);direct[request['stream']]=(d,request)
@@ -98,10 +108,11 @@ with tempfile.TemporaryDirectory(prefix='audio-pw-') as directory:
         helper=connect('helper');threading.Thread(target=helper_loop,args=(helper,),daemon=True).start()
         devices=[dict(key='fixture.output',group='fixture',name='Fixture output',direction='output',rate=48000,channels=2,format='f32le',profile='media',available=True),dict(key='fixture.input',group='fixture',name='Fixture input',direction='input',rate=48000,channels=1,format='f32le',profile='media',available=True)]
         devices.append(dict(devices[0],key='fixture.alternate',name='Fixture other output',group='other'))
-        native_devices=[dict(devices[1],key='fixture.native.input'),dict(devices[1],key='fixture.native.output',direction='output')]
+        devices.append(dict(devices[1],key='fixture.headset.input',name='Fixture headset microphone',group='headset',rate=16000,format='s16le',profile='headset'))
+        native_devices=[dict(devices[1],key='fixture.native.input'),dict(devices[1],key='fixture.native.output',direction='output'),dict(devices[-1],key='fixture.native.headset.input')]
         send(helper,dict(op='inventory',devices=devices+native_devices,suspended=False,reason=''))
         time.sleep(.05)
-        for operation,direction in [('playback','output'),('capture','input')]:
+        for operation,direction in [('playback','output'),('capture','input'),('capture-headset','headset.input')]:
             p=subprocess.run([str(build/'tests/transport-fixture'),name,operation,'fixture.native.'+direction],timeout=7,capture_output=True)
             assert p.returncode==0,p.stderr.decode()
         expected=bytes(((i*31)^(i>>8))&255 for i in range(20000));assert bytes(native_samples)==expected
@@ -166,18 +177,22 @@ with tempfile.TemporaryDirectory(prefix='audio-pw-') as directory:
         assert .75 in struct.unpack('<'+str(len(samples)//4)+'f',samples)
         assert .75 in struct.unpack('<'+str(len(alternate_samples)//4)+'f',alternate_samples)
         print('PASS moving one running PulseAudio application between devices')
-        recorder=subprocess.Popen(['pw-cat','--record','--raw','--format','f32','--rate','48000','--channels','1','--target','linux-audio.fixture.input','-'],env=env,stdout=subprocess.PIPE,stderr=logs['bridge'])
-        processes.append(recorder)
-        captured=bytearray();deadline=time.monotonic()+6
-        while len(captured)<19200 and time.monotonic()<deadline:
-            if select.select([recorder.stdout],[],[],.2)[0]:
-                part=os.read(recorder.stdout.fileno(),19200-len(captured))
-                if not part:break
-                captured.extend(part)
-        assert len(captured)==19200
-        assert .25 in struct.unpack('<4800f',captured),'Capture pattern absent'
-        recorder.terminate();recorder.wait(timeout=5)
-        print('PASS graph capture')
+        for target in ['fixture.input','fixture.headset.input']:
+            recorder=subprocess.Popen(['pw-cat','--record','--raw','--format','f32','--rate','48000','--channels','1','--target','linux-audio.'+target,'-'],env=env,stdout=subprocess.PIPE,stderr=logs['bridge'])
+            processes.append(recorder)
+            required=19200
+            if target=='fixture.headset.input':required=192000
+            captured=bytearray();deadline=time.monotonic()+6
+            while len(captured)<required and time.monotonic()<deadline:
+                if select.select([recorder.stdout],[],[],.2)[0]:
+                    part=os.read(recorder.stdout.fileno(),required-len(captured))
+                    if not part:break
+                    captured.extend(part)
+            assert len(captured)==required
+            assert .25 in struct.unpack('<'+str(required//4)+'f',captured),'Capture pattern absent'
+            recorder.terminate();recorder.wait(timeout=5)
+            if target=='fixture.headset.input':assert opens.count(target)==1,'Recorder reopened after temporary starvation'
+            print('PASS graph capture',target)
         send(helper,dict(op='inventory',devices=[],suspended=False,reason=''))
         time.sleep(.1);assert bridge.poll() is None,'Unplug stopped the bridge'
         dump=subprocess.check_output(['pw-dump'],env=env,timeout=3);assert b'linux-audio.fixture.output' in dump,'Unplug removed the retained endpoint'
@@ -186,6 +201,9 @@ with tempfile.TemporaryDirectory(prefix='audio-pw-') as directory:
         send(helper,dict(op='inventory',devices=devices,suspended=False,reason=''))
         time.sleep(.1);assert bridge.poll() is None
         assert not errors,errors
+        logs['bridge'].flush();assert 'PCM stream failed' not in (root/'bridge.log').read_text()
+        assert 'recorder retained' in (root/'bridge.log').read_text()
+        print('PASS SCO capture starvation re-primes without dropping PCM or reopening recorder')
         print('PASS unplug retention and call/reconnect lifecycle')
     finally:
         for p in reversed(processes):

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+[[ $(uname -m) == aarch64 ]] || { printf "Run this script in the AArch64 builder container\n" >&2; exit 2; }
 AUDIO_SOURCE=${1:?source}
 AUDIO_BUILD=${2:?build}
 mkdir -p "$AUDIO_BUILD/native" "$AUDIO_BUILD/tests" "$AUDIO_BUILD/objects"

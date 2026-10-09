@@ -71,13 +71,18 @@ static void *_transport_worker(void *__context)
 			}
 			if (_transport->capture != 0)
 			{
-				if (_packet->kind != AUDIO_PCM_DATA || _packet->frame != _nextFrame || _packet->frames == 0 || _packet->length != (size_t)_packet->frames * _frameBytes || ring_write(&_transport->ring, _packet->data, _packet->length) != _packet->length)
+				if (_packet->kind != AUDIO_PCM_DATA || _packet->frame != _nextFrame || _packet->frames == 0 || _packet->length != (size_t)_packet->frames * _frameBytes)
 				{
-					transport_fail(_transport);
+					__atomic_store_n(&_transport->failed, 5, __ATOMIC_RELEASE);
+					break;
+				}
+				if (ring_write(&_transport->ring, _packet->data, _packet->length) != _packet->length)
+				{
+					__atomic_store_n(&_transport->failed, 6, __ATOMIC_RELEASE);
 					break;
 				}
 				_nextFrame += _packet->frames;
-				if (ring_available(&_transport->ring) >= (size_t)(_transport->rate / 50) * _frameBytes)
+				if (ring_available(&_transport->ring) >= (size_t)_transport->prefillFrames * _frameBytes)
 				{
 					__atomic_store_n(&_transport->ready, 1, __ATOMIC_RELEASE);
 				}
@@ -136,7 +141,8 @@ static void *_transport_worker(void *__context)
 	free(_packet);
 	if (transport_live(_transport) != 0)
 	{
-		__atomic_store_n(&_transport->failed, 1, __ATOMIC_RELEASE);
+		int32_t _unfailed = 0;
+		__atomic_compare_exchange_n(&_transport->failed, &_unfailed, 1, 0, __ATOMIC_RELEASE, __ATOMIC_RELAXED);
 		__atomic_fetch_add(&_transport->xruns, 1, __ATOMIC_RELAXED);
 		if (_transport->event != NULL)
 		{
@@ -157,6 +163,12 @@ int32_t transport_start(transport_t *__transport, control_t *__control, const cJ
 	__transport->context = __context;
 	__transport->capture = strcmp(protocol_string(__device, "direction"), "input") == 0;
 	__transport->rate = (uint32_t)protocol_number(__device, "rate", 48000);
+	__transport->prefillFrames = __transport->rate / 50;
+	if (strcmp(protocol_string(__device, "profile"), "headset") == 0)
+	{
+		/* SCO input arrives in 20 ms HAL bursts; retain two periods across jitter. */
+		__transport->prefillFrames = __transport->rate / 25;
+	}
 	__transport->channels = (uint32_t)protocol_number(__device, "channels", 2);
 	__transport->sampleBytes = 4;
 	if (strcmp(protocol_string(__device, "format"), "s16le") == 0)
@@ -187,7 +199,13 @@ int32_t transport_start(transport_t *__transport, control_t *__control, const cJ
 		return -1;
 	}
 	__transport->wake = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-	if (__transport->wake < 0 || ring_init(&__transport->ring, (size_t)__transport->rate * __transport->channels * __transport->sampleBytes * 80 / 1000) != 0)
+	size_t _capacityFrames = (size_t)__transport->rate * 80 / 1000;
+	if (__transport->capture != 0)
+	{
+		/* Reserve prefill separately from the bounded 80 ms delivery-burst budget. */
+		_capacityFrames += __transport->prefillFrames;
+	}
+	if (__transport->wake < 0 || ring_init(&__transport->ring, _capacityFrames * __transport->channels * __transport->sampleBytes) != 0)
 	{
 		return -1;
 	}

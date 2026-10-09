@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 AUDIO_BUNDLE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-AUDIO_PREFIX=$HOME/.local/lib/linux-audio-routing/0.1.0
+AUDIO_VERSION=$(cat "$AUDIO_BUNDLE/linux/VERSION")
+[[ $AUDIO_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+AUDIO_PREFIX=$HOME/.local/lib/linux-audio-routing/$AUDIO_VERSION
 [[ $(id -u) != 0 ]] || { printf 'Run as the desktop user, not root.\n' >&2; exit 1; }
 if [[ -f $AUDIO_BUNDLE/SHA256SUMS ]]; then (cd "$AUDIO_BUNDLE" && sha256sum -c SHA256SUMS >/dev/null); fi
 for dependency in pipewire pipewire-pulse wireplumber pw-cli wpctl pactl pavucontrol python3; do

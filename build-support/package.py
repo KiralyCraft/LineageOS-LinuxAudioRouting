@@ -2,6 +2,7 @@
 """Package only matched, built audio artifacts. No install or device mutation."""
 import hashlib,json,pathlib,shutil,subprocess,sys,zipfile
 source,build,output=map(pathlib.Path,sys.argv[1:])
+version=(source/'linux/VERSION').read_text().strip()
 output.mkdir(parents=True,exist_ok=True)
 module=output/'magisk';module.mkdir(exist_ok=True)
 shutil.copytree(source/'module',module,dirs_exist_ok=True)
@@ -9,7 +10,7 @@ shutil.copytree(source/'module',module,dirs_exist_ok=True)
 shutil.copy2(build/'native/linux-audiod',module/'bin/linux-audiod')
 shutil.copy2(build/'android/LinuxAudio.apk',module/'app/LinuxAudio.apk')
 shutil.copy2(build/'manifest.json',module/'manifest.json')
-with zipfile.ZipFile(output/'LinuxAudioRouting-0.1.0.zip','w',zipfile.ZIP_DEFLATED) as archive:
+with zipfile.ZipFile(output/('LinuxAudioRouting-'+version+'.zip'),'w',zipfile.ZIP_DEFLATED) as archive:
     for file in sorted(module.rglob('*')):
         if file.is_file():archive.write(file,file.relative_to(module))
 shutil.copytree(source/'linux',output/'linux',dirs_exist_ok=True)

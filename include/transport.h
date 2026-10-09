@@ -18,6 +18,7 @@ typedef struct
 	uint32_t rate;
 	uint32_t channels;
 	uint32_t sampleBytes;
+	uint32_t prefillFrames;
 	uint64_t stream;
 	uint64_t epoch;
 	uint64_t sentFrames;

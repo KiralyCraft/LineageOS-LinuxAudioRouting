@@ -16,6 +16,8 @@ gcc -std=c99 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit
 "$AUDIO_BUILD/tests/unit" > "$AUDIO_BUILD/tests/unit.log" 2>&1
 python3 "$AUDIO_SOURCE/tests/broker.py" "$AUDIO_BUILD/tests/broker-host" > "$AUDIO_BUILD/tests/broker.log" 2>&1
 python3 "$AUDIO_SOURCE/tests/desktop.py" "$AUDIO_SOURCE" > "$AUDIO_BUILD/tests/desktop.log" 2>&1
+python3 "$AUDIO_SOURCE/tests/apk.py" "$AUDIO_SOURCE" > "$AUDIO_BUILD/tests/apk.log" 2>&1
+python3 "$AUDIO_SOURCE/tests/startup.py" "$AUDIO_SOURCE" > "$AUDIO_BUILD/tests/startup.log" 2>&1
 # The persistent AArch64 builder mounts the package-combined parent at /build.
 case "$AUDIO_SOURCE" in
     /bigdata/mesa-sync-build/package-combined/*) ;;

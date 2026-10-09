@@ -22,7 +22,7 @@ PY
 }
 owned_supervisor() {
     [[ -r "$AUDIO_RUNTIME/supervisor.pid" ]] || return 1
-    read -r AUDIO_PID AUDIO_START < "$AUDIO_RUNTIME/supervisor.pid"
+    read -r AUDIO_PID AUDIO_START < "$AUDIO_RUNTIME/supervisor.pid" || return 1
     [[ $AUDIO_PID =~ ^[0-9]+$ && $AUDIO_START =~ ^[0-9]+$ && -r /proc/$AUDIO_PID/stat ]] || return 1
     [[ $(awk '{print $3}' /proc/"$AUDIO_PID"/stat 2>/dev/null) != Z && $(awk '{print $22}' /proc/"$AUDIO_PID"/stat 2>/dev/null) == "$AUDIO_START" ]]
 }
@@ -35,7 +35,7 @@ case $AUDIO_OPERATION in
         exec 9>"$AUDIO_RUNTIME/lock"
         flock 9
         if owned_supervisor; then exit 0; fi
-        for dependency in pipewire pipewire-pulse wireplumber pw-cli wpctl python3; do command -v "$dependency" >/dev/null; done
+        for dependency in pipewire pipewire-pulse wireplumber pw-cli wpctl pactl python3 setsid; do command -v "$dependency" >/dev/null; done
         [[ -x $AUDIO_BASE/bin/linux-audio-bridge ]]
         mkdir -p "$AUDIO_RUNTIME/config/pipewire.conf.d" "$AUDIO_RUNTIME/config/pipewire-pulse.conf.d" "$AUDIO_RUNTIME/wp/wireplumber.conf.d"
         cp /usr/share/pipewire/pipewire.conf "$AUDIO_RUNTIME/config/pipewire.conf"
@@ -44,20 +44,17 @@ case $AUDIO_OPERATION in
         cp "$AUDIO_BASE/config/pulse-extra.conf" "$AUDIO_RUNTIME/config/pipewire-pulse.conf.d/99-linux-audio.conf"
         cp /usr/share/wireplumber/wireplumber.conf "$AUDIO_RUNTIME/wp/wireplumber.conf"
         cp "$AUDIO_BASE/config/wireplumber-extra.conf" "$AUDIO_RUNTIME/wp/wireplumber.conf.d/99-linux-audio.conf"
-        nohup "$AUDIO_BASE/bin/linux-audio" supervise </dev/null >"$AUDIO_RUNTIME/supervisor.log" 2>&1 9>&- &
-        AUDIO_PID=$!
-        AUDIO_START=$(awk '{print $22}' /proc/"$AUDIO_PID"/stat 2>/dev/null)
-        printf '%s %s\n' "$AUDIO_PID" "$AUDIO_START" > "$AUDIO_RUNTIME/supervisor.pid"
+        : > "$AUDIO_RUNTIME/supervisor.pid"
+        # A separate session survives terminal/launcher process-group teardown.
+        nohup setsid --fork "$AUDIO_BASE/bin/linux-audio" supervise </dev/null >"$AUDIO_RUNTIME/supervisor.log" 2>&1 9>&- &
         for ((AUDIO_WAIT=0; AUDIO_WAIT<100; ++AUDIO_WAIT)); do
-            if [[ -S $AUDIO_RUNTIME/pulse/native ]] && pw-cli info 0 >/dev/null 2>&1; then
+            if owned_supervisor && pw-cli info 0 >/dev/null 2>&1 && pactl info >/dev/null 2>&1; then
                 printf 'Linux audio ready; start the Android helper to expose devices.\n'
                 exit 0
             fi
-            kill -0 "$AUDIO_PID" 2>/dev/null || break
             sleep .05
         done
-        kill "$AUDIO_PID" 2>/dev/null || true
-        wait "$AUDIO_PID" 2>/dev/null || true
+        if owned_supervisor; then kill "$AUDIO_PID" 2>/dev/null || true; fi
         printf 'Audio startup failed; see %s\n' "$AUDIO_RUNTIME/supervisor.log" >&2
         exit 1
         ;;
@@ -71,12 +68,19 @@ case $AUDIO_OPERATION in
         }
         trap 'exit 0' TERM INT
         trap cleanup EXIT
+        AUDIO_START=$(awk '{print $22}' /proc/$$/stat)
+        printf '%s %s\n' "$$" "$AUDIO_START" > "$AUDIO_RUNTIME/supervisor.pid.tmp"
+        mv -f "$AUDIO_RUNTIME/supervisor.pid.tmp" "$AUDIO_RUNTIME/supervisor.pid"
         PIPEWIRE_CONFIG_DIR="$AUDIO_RUNTIME/config" pipewire -c pipewire.conf >>"$AUDIO_RUNTIME/pipewire.log" 2>&1 &
         AUDIO_CHILDREN+=($!)
+        AUDIO_PIPEWIRE_PID=${AUDIO_CHILDREN[0]}
+        AUDIO_CONNECTED=0
         for ((AUDIO_WAIT=0; AUDIO_WAIT<80; ++AUDIO_WAIT)); do
-            [[ -S $AUDIO_RUNTIME/linux-audio ]] && break
+            if pw-cli info 0 >/dev/null 2>&1; then AUDIO_CONNECTED=1; break; fi
+            kill -0 "$AUDIO_PIPEWIRE_PID" 2>/dev/null || exit 1
             sleep .05
         done
+        [[ $AUDIO_CONNECTED == 1 ]] || exit 1
         WIREPLUMBER_CONFIG_DIR="$AUDIO_RUNTIME/wp" wireplumber --profile linux-audio >>"$AUDIO_RUNTIME/wireplumber.log" 2>&1 &
         AUDIO_CHILDREN+=($!)
         PIPEWIRE_CONFIG_DIR="$AUDIO_RUNTIME/config" pipewire-pulse -c pipewire-pulse.conf >>"$AUDIO_RUNTIME/pulse.log" 2>&1 &
