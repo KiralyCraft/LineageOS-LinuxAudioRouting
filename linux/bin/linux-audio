@@ -28,7 +28,7 @@ owned_supervisor() {
 }
 case $AUDIO_OPERATION in
     env)
-        printf 'export PIPEWIRE_RUNTIME_DIR=%q PIPEWIRE_REMOTE=linux-audio PULSE_SERVER=%q\n' "$AUDIO_RUNTIME" "$PULSE_SERVER"
+        printf 'export PIPEWIRE_RUNTIME_DIR=%q PIPEWIRE_REMOTE=linux-audio PULSE_RUNTIME_PATH=%q PULSE_SERVER=%q\n' "$AUDIO_RUNTIME" "$PULSE_RUNTIME_PATH" "$PULSE_SERVER"
         ;;
     start)
         prepare_runtime
@@ -124,6 +124,13 @@ case $AUDIO_OPERATION in
         "$AUDIO_BASE/bin/linux-audio" start
         exec pavucontrol "$@"
         ;;
+    tray)
+        "$AUDIO_BASE/bin/linux-audio" start
+        if [[ -n ${DBUS_SESSION_BUS_ADDRESS:-} ]] && command -v dbus-update-activation-environment >/dev/null; then
+            dbus-update-activation-environment PIPEWIRE_RUNTIME_DIR PIPEWIRE_REMOTE PULSE_RUNTIME_PATH PULSE_SERVER || true
+        fi
+        exec pasystray --volume-max=100 --notify=none "$@"
+        ;;
     volume)
         case ${1:?up/down/mute} in
             up) exec wpctl set-volume --limit 1.0 @DEFAULT_AUDIO_SINK@ 5%+ ;;
@@ -133,5 +140,5 @@ case $AUDIO_OPERATION in
         exit 2
         ;;
     profile) exec "$AUDIO_BASE/bin/linux-audioctl" profile "$@" ;;
-    *) printf 'Usage: linux-audio {start|stop|env|status|run COMMAND...|mixer|volume up/down/mute|profile ENDPOINT stereo/headset}\n' >&2; exit 2 ;;
+    *) printf 'Usage: linux-audio {start|stop|env|status|run COMMAND...|mixer|tray|volume up/down/mute|profile ENDPOINT stereo/headset}\n' >&2; exit 2 ;;
 esac

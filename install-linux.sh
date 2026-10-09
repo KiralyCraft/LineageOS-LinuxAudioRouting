@@ -5,6 +5,10 @@ AUDIO_VERSION=$(cat "$AUDIO_BUNDLE/linux/VERSION")
 [[ $AUDIO_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
 AUDIO_PREFIX=$HOME/.local/lib/linux-audio-routing/$AUDIO_VERSION
 [[ $(id -u) != 0 ]] || { printf 'Run as the desktop user, not root.\n' >&2; exit 1; }
+if [[ ${1:-} == --activate-default ]]; then
+    command -v pasystray >/dev/null || { printf 'Desktop integration needs pasystray.\n' >&2; exit 1; }
+    [[ -f /usr/lib/alsa-lib/libasound_module_pcm_pipewire.so ]] || { printf 'Desktop integration needs pipewire-alsa.\n' >&2; exit 1; }
+fi
 if [[ -f $AUDIO_BUNDLE/SHA256SUMS ]]; then (cd "$AUDIO_BUNDLE" && sha256sum -c SHA256SUMS >/dev/null); fi
 for dependency in pipewire pipewire-pulse wireplumber pw-cli wpctl pactl pavucontrol python3; do
     command -v "$dependency" >/dev/null || { printf 'Missing %s; install pipewire pipewire-pulse wireplumber libpulse pavucontrol first.\n' "$dependency" >&2; exit 1; }
@@ -21,15 +25,18 @@ done
 cat > "$HOME/.local/share/applications/linux-audio-mixer.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
-Name=Linux Audio Devices
+Name=Sound Settings
 Comment=Select Android devices and adjust Linux application volume
 Exec=$AUDIO_PREFIX/bin/linux-audio mixer
 Icon=audio-headphones
-Categories=AudioVideo;Mixer;
+Categories=Settings;HardwareSettings;
 Terminal=false
 DESKTOP
-printf 'Installed. Start the Android helper, then launch apps with:\n  %s/bin/with-linux-audio APPLICATION\nMixer:\n  %s/bin/linux-audio mixer\n' "$AUDIO_PREFIX" "$AUDIO_PREFIX"
 if [[ ${1:-} == --activate-default ]]; then
     # Only explicit migration changes the user's shell/desktop configuration.
-    python3 "$AUDIO_PREFIX/configure-desktop.py" "$AUDIO_PREFIX"
+    shift
+    python3 "$AUDIO_PREFIX/configure-desktop.py" "$AUDIO_PREFIX" "$@"
+    printf 'Use Sound Settings or the LXDE tray. Start the Android helper once per reboot.\n'
+else
+    printf 'Installed. Start the Android helper, then launch apps with:\n  %s/bin/with-linux-audio APPLICATION\nMixer:\n  %s/bin/linux-audio mixer\n' "$AUDIO_PREFIX" "$AUDIO_PREFIX"
 fi

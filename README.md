@@ -18,7 +18,7 @@ Queues are bounded: 20 ms playback credit, an 80 ms playback FIFO, a capture FIF
 
 1. Install `LinuxAudioRouting-0.1.1.zip` through Magisk, then reboot. This is a separate module; it does not replace the HDMI module or any driver. Its boot service verifies an already matching APK and otherwise installs/updates the ordinary signed `dev.kiraly.linuxaudio` app. `LinuxAudio.apk` is also provided for manual installation. An APK installation failure is logged and does not prevent the broker from starting.
 2. Open **Linux Audio**, grant the requested microphone, nearby-device, phone-state and notification permissions, and tap **Start Linux audio**. Start once after each reboot, or use its Quick Settings tile. The service is deliberately not automatically started or granted permissions by root. Capture opens only when a Linux recorder uses a source. A partial wake lock exists only while streams are active. The microphone foreground service continues capturing with the Android activity in the background; Android Settings can still show the grant as "Allow while using the app". Stopping the helper also stops capture.
-3. In the chroot, install required packages if missing: `pipewire pipewire-pulse wireplumber libpulse pavucontrol` (optional `pasystray`). Run the bundle's `./install-linux.sh` as the desktop user. It installs a versioned private runtime and commands under `~/.local/bin`.
+3. In the chroot, install required packages if missing: `pipewire pipewire-pulse wireplumber libpulse pavucontrol`. Desktop integration also uses `pasystray` and `pipewire-alsa`. Run the bundle's `./install-linux.sh` as the desktop user. It installs a versioned private runtime and commands under `~/.local/bin`.
 4. Test without changing session defaults:
 
    ```sh
@@ -28,13 +28,17 @@ Queues are bounded: 20 ms playback credit, an 80 ms playback FIFO, a capture FIF
    ```
 
    A previously running application retains its previous audio connection. Use a new application/process for the initial test.
-5. After hardware validation, `./install-linux.sh --activate-default` enables the private endpoint for future bash/Openbox/LXDE sessions and adds missing Openbox volume-key bindings. It backs up every changed file and preserves existing key bindings. Restart the desktop when convenient. An HDMI launcher that honors an inherited PULSE_SERVER can be launched through `with-linux-audio`; no HDMI patch is required.
+5. After hardware validation, `./install-linux.sh --activate-default` enables the private endpoint for future bash/Openbox/LXDE sessions, starts the volume/device tray in LXDE, and adds missing volume-key bindings to both Openbox profiles (`lxde-rc.xml` and `rc.xml`). It backs up every changed file and preserves existing key bindings. PulseAudio, native PipeWire and ALSA client defaults also connect to the bridge, including applications without inherited shell exports. Restart the desktop when convenient. LXSession's native `Environment_variable` section overrides stale inherited audio variables before launching the panel or applications; the tray updates only audio variables in the session's DBus activation environment. DISPLAY, graphics settings, XDG_RUNTIME_DIR and the DBus address are preserved.
+
+   If Termux's old PulseAudio startup has already been removed, `./install-linux.sh --activate-default --remove-legacy-termux` also removes its known obsolete Pulse exports from the user's shell configuration. Other earlier audio exports are retained as comments, and all changed files are backed up. This installer never edits Termux-native files or stops a daemon automatically.
 
 The private server uses `/tmp/linux-audio-<UID>/linux-audio` and `/tmp/linux-audio-<UID>/pulse/native`. It preserves the desktop's XDG_RUNTIME_DIR and DBus environment. Its WirePlumber profile runs policy only, without ALSA/BlueZ/video hardware monitors. Startup probes the PipeWire and Pulse protocols rather than trusting existing socket files. Diagnostics and server state remain on tmpfs/zram; no per-frame SD-card logging occurs.
 
 ## Select devices, volume and Bluetooth profiles
 
-Use the Linux Audio Devices desktop menu entry or `linux-audio mixer`. pavucontrol's Output Devices/Input Devices tabs choose the default endpoint; Playback/Recording move individual applications. Device choices are separate virtual nodes rather than ALSA cards. Stereo/headset routes are visibly named.
+Use the **Sound Settings** desktop menu entry or `linux-audio mixer`. pavucontrol's Output Devices/Input Devices tabs choose the default endpoint; Playback/Recording move individual applications. Device choices are separate virtual nodes rather than ALSA cards. Stereo/headset routes are visibly named.
+
+The LXDE tray icon opens a device/application menu. Scroll over it for volume, middle-click to mute, and Ctrl-click for Sound Settings. `linux-audio tray` starts it manually in an existing desktop. The tray and mixer are standard PulseAudio clients of PipeWire; no LXDE fork or duplicate audio transport is needed. Starting them also starts the private server if necessary. The Android helper must still be started visibly once per reboot.
 
 `linux-audio volume up`, `down` and `mute` adjust the private Linux default sink, capped at 100%. No Android media/call volume API is called. Use pavucontrol for per-application volume.
 
@@ -48,7 +52,7 @@ Android calls/focus priority close Linux streams and release this helper's commu
 
 `linux-audio stop` stops only this private server and its children; the Android app's Stop button releases its audio streams. Disable/remove this separate Magisk module and reboot to remove the broker. The app may be uninstalled normally.
 
-Default migration backs up shell/desktop files under `~/.local/state/linux-audio-routing/backup-<timestamp>/`. Restore the files listed in `files.txt` to undo the migration; remove newly created files only if listed and absent in the backup. For an unmodified session, launch with the legacy `PULSE_SERVER=unix:/hostMounts/chrootBind/pulseAudio.socket`. This project does not modify Termux's PulseAudio startup files or stop its daemon automatically.
+Default migration backs up shell/desktop and audio-client files under `~/.local/state/linux-audio-routing/backup-<timestamp>/`. Restore the files listed in `files.txt` to undo the migration; remove newly created files only if listed and absent in the backup. For an unmodified session with a still-running Termux server, launch with the legacy `PULSE_SERVER=unix:/hostMounts/chrootBind/pulseAudio.socket`. This project does not modify Termux's PulseAudio startup files or stop its daemon automatically.
 
 ## Build
 
