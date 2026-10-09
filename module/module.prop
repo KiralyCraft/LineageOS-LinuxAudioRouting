@@ -1,0 +1,6 @@
+id=linux-audio-routing
+name=Linux Audio Routing
+version=0.1.0
+versionCode=1
+author=KiralyCraft
+description=Authenticated raw PCM bridge; Android owns hardware and calls; Linux PipeWire controls application audio.

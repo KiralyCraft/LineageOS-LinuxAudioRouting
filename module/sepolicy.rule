@@ -1,0 +1,8 @@
+# Abstract control socket; broker checks exact package UID using SO_PEERCRED.
+allow untrusted_app magisk unix_stream_socket connectto
+allow untrusted_app_32 magisk unix_stream_socket connectto
+# Direct root-created socketpair FDs, handed off after authentication.
+allow untrusted_app magisk fd use
+allow untrusted_app_32 magisk fd use
+allow untrusted_app magisk unix_stream_socket { read write getattr getopt setopt shutdown }
+allow untrusted_app_32 magisk unix_stream_socket { read write getattr getopt setopt shutdown }

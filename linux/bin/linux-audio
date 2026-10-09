@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+AUDIO_SCRIPT=$(readlink -f -- "${BASH_SOURCE[0]}")
+AUDIO_BASE=$(cd -- "$(dirname -- "$AUDIO_SCRIPT")/.." && pwd)
+AUDIO_RUNTIME=/tmp/linux-audio-$(id -u)
+# No XDG_RUNTIME_DIR or DBus override: graphics and the desktop retain their session.
+export PIPEWIRE_RUNTIME_DIR=$AUDIO_RUNTIME PIPEWIRE_REMOTE=linux-audio
+export PULSE_RUNTIME_PATH=$AUDIO_RUNTIME/pulse
+export PULSE_SERVER=unix:$AUDIO_RUNTIME/pulse/native
+AUDIO_OPERATION=${1:-status}
+shift || true
+prepare_runtime() {
+    python3 - "$AUDIO_RUNTIME" <<'PY'
+import os, stat, sys
+p=sys.argv[1]
+try: os.mkdir(p,0o700)
+except FileExistsError: pass
+s=os.lstat(p)
+if not stat.S_ISDIR(s.st_mode) or s.st_uid!=os.getuid() or stat.S_IMODE(s.st_mode)!=0o700:
+    raise SystemExit('Refusing unsafe Linux audio runtime directory')
+PY
+}
+owned_supervisor() {
+    [[ -r "$AUDIO_RUNTIME/supervisor.pid" ]] || return 1
+    read -r AUDIO_PID AUDIO_START < "$AUDIO_RUNTIME/supervisor.pid"
+    [[ $AUDIO_PID =~ ^[0-9]+$ && $AUDIO_START =~ ^[0-9]+$ && -r /proc/$AUDIO_PID/stat ]] || return 1
+    [[ $(awk '{print $3}' /proc/"$AUDIO_PID"/stat 2>/dev/null) != Z && $(awk '{print $22}' /proc/"$AUDIO_PID"/stat 2>/dev/null) == "$AUDIO_START" ]]
+}
+case $AUDIO_OPERATION in
+    env)
+        printf 'export PIPEWIRE_RUNTIME_DIR=%q PIPEWIRE_REMOTE=linux-audio PULSE_SERVER=%q\n' "$AUDIO_RUNTIME" "$PULSE_SERVER"
+        ;;
+    start)
+        prepare_runtime
+        exec 9>"$AUDIO_RUNTIME/lock"
+        flock 9
+        if owned_supervisor; then exit 0; fi
+        for dependency in pipewire pipewire-pulse wireplumber pw-cli wpctl python3; do command -v "$dependency" >/dev/null; done
+        [[ -x $AUDIO_BASE/bin/linux-audio-bridge ]]
+        mkdir -p "$AUDIO_RUNTIME/config/pipewire.conf.d" "$AUDIO_RUNTIME/config/pipewire-pulse.conf.d" "$AUDIO_RUNTIME/wp/wireplumber.conf.d"
+        cp /usr/share/pipewire/pipewire.conf "$AUDIO_RUNTIME/config/pipewire.conf"
+        cp "$AUDIO_BASE/config/pipewire-extra.conf" "$AUDIO_RUNTIME/config/pipewire.conf.d/99-linux-audio.conf"
+        cp /usr/share/pipewire/pipewire-pulse.conf "$AUDIO_RUNTIME/config/pipewire-pulse.conf"
+        cp "$AUDIO_BASE/config/pulse-extra.conf" "$AUDIO_RUNTIME/config/pipewire-pulse.conf.d/99-linux-audio.conf"
+        cp /usr/share/wireplumber/wireplumber.conf "$AUDIO_RUNTIME/wp/wireplumber.conf"
+        cp "$AUDIO_BASE/config/wireplumber-extra.conf" "$AUDIO_RUNTIME/wp/wireplumber.conf.d/99-linux-audio.conf"
+        nohup "$AUDIO_BASE/bin/linux-audio" supervise </dev/null >"$AUDIO_RUNTIME/supervisor.log" 2>&1 9>&- &
+        AUDIO_PID=$!
+        AUDIO_START=$(awk '{print $22}' /proc/"$AUDIO_PID"/stat 2>/dev/null)
+        printf '%s %s\n' "$AUDIO_PID" "$AUDIO_START" > "$AUDIO_RUNTIME/supervisor.pid"
+        for ((AUDIO_WAIT=0; AUDIO_WAIT<100; ++AUDIO_WAIT)); do
+            if [[ -S $AUDIO_RUNTIME/pulse/native ]] && pw-cli info 0 >/dev/null 2>&1; then
+                printf 'Linux audio ready; start the Android helper to expose devices.\n'
+                exit 0
+            fi
+            kill -0 "$AUDIO_PID" 2>/dev/null || break
+            sleep .05
+        done
+        printf 'Audio startup failed; see %s\n' "$AUDIO_RUNTIME/supervisor.log" >&2
+        exit 1
+        ;;
+    supervise)
+        prepare_runtime
+        AUDIO_CHILDREN=()
+        cleanup() {
+            trap - EXIT TERM INT
+            for child in "${AUDIO_CHILDREN[@]}"; do kill "$child" 2>/dev/null || true; done
+            for child in "${AUDIO_CHILDREN[@]}"; do wait "$child" 2>/dev/null || true; done
+        }
+        trap 'exit 0' TERM INT
+        trap cleanup EXIT
+        PIPEWIRE_CONFIG_DIR="$AUDIO_RUNTIME/config" pipewire -c pipewire.conf >>"$AUDIO_RUNTIME/pipewire.log" 2>&1 &
+        AUDIO_CHILDREN+=($!)
+        for ((AUDIO_WAIT=0; AUDIO_WAIT<80; ++AUDIO_WAIT)); do
+            [[ -S $AUDIO_RUNTIME/linux-audio ]] && break
+            sleep .05
+        done
+        WIREPLUMBER_CONFIG_DIR="$AUDIO_RUNTIME/wp" wireplumber --profile linux-audio >>"$AUDIO_RUNTIME/wireplumber.log" 2>&1 &
+        AUDIO_CHILDREN+=($!)
+        PIPEWIRE_CONFIG_DIR="$AUDIO_RUNTIME/config" pipewire-pulse -c pipewire-pulse.conf >>"$AUDIO_RUNTIME/pulse.log" 2>&1 &
+        AUDIO_CHILDREN+=($!)
+        AUDIO_BRIDGE_PID=0
+        while true; do
+            for child in "${AUDIO_CHILDREN[@]:0:3}"; do kill -0 "$child" 2>/dev/null || exit 1; done
+            if [[ $AUDIO_BRIDGE_PID == 0 ]] || ! kill -0 "$AUDIO_BRIDGE_PID" 2>/dev/null; then
+                if [[ $AUDIO_BRIDGE_PID != 0 ]]; then wait "$AUDIO_BRIDGE_PID" 2>/dev/null || true; fi
+                "$AUDIO_BASE/bin/linux-audio-bridge" >"$AUDIO_RUNTIME/bridge.log" 2>&1 &
+                AUDIO_BRIDGE_PID=$!
+                AUDIO_CHILDREN[3]=$AUDIO_BRIDGE_PID
+            fi
+            for log in "$AUDIO_RUNTIME"/*.log; do
+                if [[ $(stat -c %s "$log") -gt 262144 ]]; then tail -c 65536 "$log" > "$log.tail"; cat "$log.tail" > "$log"; unlink "$log.tail"; fi
+            done
+            sleep 1 &
+            wait $! || true
+        done
+        ;;
+    stop)
+        prepare_runtime
+        exec 9>"$AUDIO_RUNTIME/lock"
+        flock 9
+        if owned_supervisor; then
+            kill "$AUDIO_PID"
+            for ((AUDIO_WAIT=0; AUDIO_WAIT<160; ++AUDIO_WAIT)); do owned_supervisor || exit 0; sleep .05; done
+            printf 'Owned audio supervisor did not finish; inspect %s\n' "$AUDIO_RUNTIME" >&2
+            exit 1
+        fi
+        ;;
+    run)
+        "$AUDIO_BASE/bin/linux-audio" start
+        exec "$@"
+        ;;
+    status)
+        printf 'Private Pulse endpoint: %s\n' "$PULSE_SERVER"
+        "$AUDIO_BASE/bin/linux-audioctl" status
+        ;;
+    mixer)
+        "$AUDIO_BASE/bin/linux-audio" start
+        exec pavucontrol "$@"
+        ;;
+    volume)
+        case ${1:?up/down/mute} in
+            up) exec wpctl set-volume --limit 1.0 @DEFAULT_AUDIO_SINK@ 5%+ ;;
+            down) exec wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
+            mute) exec wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+        esac
+        exit 2
+        ;;
+    profile) exec "$AUDIO_BASE/bin/linux-audioctl" profile "$@" ;;
+    *) printf 'Usage: linux-audio {start|stop|env|status|run COMMAND...|mixer|volume up/down/mute|profile ENDPOINT stereo/headset}\n' >&2; exit 2 ;;
+esac
