@@ -17,6 +17,15 @@ uint8_t transport_live(const transport_t *__transport)
 
 void transport_wake(transport_t *__transport)
 {
+	if (__transport->sharedPcm != 0 && __transport->shared.header != NULL)
+	{
+		int32_t _event = __transport->shared.producerEvent;
+		if (__transport->capture != 0)
+		{
+			_event = __transport->shared.consumerEvent;
+		}
+		shared_notify(_event);
+	}
 	uint64_t _value = 1;
 	if (__transport->wake >= 0)
 	{
@@ -32,8 +41,30 @@ void transport_fail(transport_t *__transport)
 
 void transport_fail_reason(transport_t *__transport, int32_t __reason)
 {
+	/* Shutdown intentionally wakes blocked socket I/O. Cancellation must not
+	 * turn that wakeup into a route failure or latch a paused microphone. */
+	if (transport_live(__transport) == 0)
+	{
+		return;
+	}
 	int32_t _expected = 0;
 	__atomic_compare_exchange_n(&__transport->failed, &_expected, __reason, 0, __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+	transport_wake(__transport);
+}
+
+void transport_cancel_capture(transport_t *__transport)
+{
+	/* Called on graph pause, before the manager can block on another route.
+	 * Stop producing immediately; resource destruction still uses its barrier. */
+	__atomic_store_n(&__transport->live, 0, __ATOMIC_RELEASE);
+	if (__transport->shared.header != NULL)
+	{
+		__atomic_store_n(&__transport->shared.header->stopped, 1, __ATOMIC_RELEASE);
+	}
+	if (__transport->socket >= 0)
+	{
+		shutdown(__transport->socket, SHUT_RDWR);
+	}
 	transport_wake(__transport);
 }
 
@@ -108,6 +139,10 @@ static void *_transport_worker(void *__context)
 			_timeout = (int32_t)((_transmitDeadline - _now + UINT64_C(999999)) / UINT64_C(1000000));
 		}
 		int32_t _result = poll(_poll, 2, _timeout);
+		if (transport_live(_transport) == 0)
+		{
+			break;
+		}
 		if (_result == 0)
 		{
 			transport_fail_reason(_transport, 13);
@@ -142,12 +177,12 @@ static void *_transport_worker(void *__context)
 			{
 				if (_packet->kind != AUDIO_PCM_DATA || _packet->frame != _nextFrame || _packet->frames == 0 || _packet->length != (size_t)_packet->frames * _frameBytes)
 				{
-					__atomic_store_n(&_transport->failed, 5, __ATOMIC_RELEASE);
+					transport_fail_reason(_transport, 5);
 					break;
 				}
 				if (ring_write(&_transport->ring, _packet->data, _packet->length) != _packet->length)
 				{
-					__atomic_store_n(&_transport->failed, 6, __ATOMIC_RELEASE);
+					transport_fail_reason(_transport, 6);
 					break;
 				}
 				_nextFrame += _packet->frames;
@@ -246,6 +281,7 @@ int32_t transport_start(transport_t *__transport, control_t *__control, const cJ
 	memset(__transport, 0, sizeof(*__transport));
 	__transport->socket = -1;
 	__transport->wake = -1;
+	shared_init(&__transport->shared);
 	__transport->control = __control;
 	__transport->event = __event;
 	__transport->context = __context;
@@ -271,6 +307,13 @@ int32_t transport_start(transport_t *__transport, control_t *__control, const cJ
 	protocol_set_string(_request, "op", "open");
 	protocol_set_boolean(_request, "write_credit", 1);
 	protocol_set_boolean(_request, "presentation_clock", 1);
+	uint8_t _shared = protocol_boolean(__device, "shared_pcm");
+	const char *_sharedOption = getenv("LINUX_AUDIO_SHARED_PCM");
+	if (_sharedOption != NULL && strcmp(_sharedOption, "0") == 0)
+	{
+		_shared = 0;
+	}
+	protocol_set_boolean(_request, "shared_pcm", _shared);
 	protocol_set_string(_request, "endpoint", protocol_string(__device, "key"));
 	protocol_set_number(_request, "generation", __generation);
 	uint64_t _openStart = protocol_now();
@@ -284,6 +327,7 @@ int32_t transport_start(transport_t *__transport, control_t *__control, const cJ
 	}
 	__transport->stream = protocol_number(_reply, "stream", 0);
 	__transport->writeCredit = protocol_boolean(_reply, "write_credit");
+	__transport->sharedPcm = _shared && protocol_boolean(_reply, "shared_pcm");
 	__transport->presentationClock = protocol_boolean(_reply, "presentation_clock");
 	fprintf(stderr, "PCM open %s: stream=%llu rate=%u channels=%u sample_bytes=%u write_credit=%u open_ms=%.3f\n", protocol_string(__device, "key"), (unsigned long long)__transport->stream, __transport->rate, __transport->channels, __transport->sampleBytes, __transport->writeCredit, (double)(protocol_now() - _openStart) / 1000000.0);
 	__transport->epoch = protocol_number(_reply, "epoch", 0);
@@ -300,12 +344,31 @@ int32_t transport_start(transport_t *__transport, control_t *__control, const cJ
 		/* Reserve prefill separately from the bounded 80 ms delivery-burst budget. */
 		_capacityFrames += __transport->prefillFrames;
 	}
-	if (__transport->wake < 0 || ring_init(&__transport->ring, _capacityFrames * __transport->channels * __transport->sampleBytes) != 0)
+	size_t _capacity = _capacityFrames * __transport->channels * __transport->sampleBytes;
+	if (__transport->wake < 0)
+	{
+		return -1;
+	}
+	if (__transport->sharedPcm != 0)
+	{
+		if (shared_create(&__transport->shared, __transport->epoch, __transport->rate, __transport->channels, __transport->sampleBytes, __transport->capture, _capacity) != 0 || shared_send(&__transport->shared, __transport->socket) != 0)
+		{
+			return -1;
+		}
+		__transport->ring = __transport->shared.ring;
+		fprintf(stderr, "PCM shared memory: epoch=%llu capacity=%zu bytes\n", (unsigned long long)__transport->epoch, _capacity);
+	}
+	else if (ring_init(&__transport->ring, _capacity) != 0)
 	{
 		return -1;
 	}
 	__atomic_store_n(&__transport->live, 1, __ATOMIC_RELEASE);
-	if (pthread_create(&__transport->thread, NULL, _transport_worker, __transport) != 0)
+	void *(*_worker)(void *) = _transport_worker;
+	if (__transport->sharedPcm != 0)
+	{
+		_worker = transport_shared_worker;
+	}
+	if (pthread_create(&__transport->thread, NULL, _worker, __transport) != 0)
 	{
 		__atomic_store_n(&__transport->live, 0, __ATOMIC_RELEASE);
 		return -1;
@@ -362,6 +425,7 @@ void transport_stop(transport_t *__transport)
 		cJSON_Delete(_reply);
 	}
 	ring_destroy(&__transport->ring);
+	shared_close(&__transport->shared);
 	__transport->socket = -1;
 	__transport->wake = -1;
 	__transport->stream = 0;

@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.22)
+project(linux_audio LANGUAGES C)
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+add_library(linux_audio SHARED aaudio_backend.c ../shared.c ../ring.c ../protocol.c ../vendor/cJSON.c)
+target_compile_options(linux_audio PRIVATE -Wall -Wextra -Werror)
+target_link_options(linux_audio PRIVATE -Wl,-z,max-page-size=16384)
+target_link_libraries(linux_audio aaudio log dl m)

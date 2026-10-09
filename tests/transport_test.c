@@ -28,6 +28,8 @@ int main(int __argc, char **__argv)
 	uint8_t _expectIncomplete = strcmp(__argv[2], "playback-incomplete") == 0;
 	cJSON *_device = cJSON_CreateObject();
 	protocol_set_string(_device, "key", __argv[3]);
+	const char *_shared = getenv("AUDIO_SHARED_FIXTURE");
+	protocol_set_boolean(_device, "shared_pcm", _shared != NULL && strcmp(_shared, "1") == 0);
 	protocol_set_string(_device, "direction", "output");
 	if (_capture != 0)
 	{
@@ -68,6 +70,7 @@ int main(int __argc, char **__argv)
 				_result = -1;
 				break;
 			}
+			transport_wake(&_transport);
 		}
 		for (size_t _index = 0; _index < _length; ++_index)
 		{
@@ -104,7 +107,15 @@ int main(int __argc, char **__argv)
 			_result = -1;
 		}
 	}
+	if (_capture != 0)
+	{
+		transport_cancel_capture(&_transport);
+	}
 	transport_stop(&_transport);
+	if (__atomic_load_n(&_transport.failed, __ATOMIC_ACQUIRE) != 0)
+	{
+		_result = -1;
+	}
 	control_stop(&_control);
 	if (_result != 0)
 	{

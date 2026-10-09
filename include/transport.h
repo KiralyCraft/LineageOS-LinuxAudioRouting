@@ -2,6 +2,7 @@
 #define AUDIO_TRANSPORT_H
 #include "control.h"
 #include "ring.h"
+#include "shared.h"
 typedef void (*transport_event_t)(void *__context);
 typedef struct
 {
@@ -38,10 +39,14 @@ typedef struct
 	uint64_t xruns;
 	pthread_t thread;
 	ring_t ring;
+	uint8_t sharedPcm;
+	shared_t shared;
 	transport_event_t event;
 	void *context;
 } transport_t;
 int32_t transport_start(transport_t *__transport, control_t *__control, const cJSON *__device, uint64_t __generation, transport_event_t __event, void *__context);
+void *transport_shared_worker(void *__context);
+void transport_cancel_capture(transport_t *__transport);
 void transport_stop(transport_t *__transport);
 int32_t transport_drain(transport_t *__transport);
 void transport_wake(transport_t *__transport);

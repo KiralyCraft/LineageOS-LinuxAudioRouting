@@ -7,7 +7,7 @@ AUDIO_NDK=$AUDIO_SDK/ndk/29.0.14206865/toolchains/llvm/prebuilt/linux-x86_64/bin
 AUDIO_TOOLS=$AUDIO_SDK/build-tools/36.0.0
 AUDIO_JAR=$AUDIO_SDK/platforms/android-36/android.jar
 AUDIO_SIGNING=${AUDIO_SIGNING:-/bigdata/linux-audio-routing/signing}
-mkdir -p "$AUDIO_BUILD/native" "$AUDIO_BUILD/android/generated" "$AUDIO_BUILD/android/classes" "$AUDIO_BUILD/android/dex" "$AUDIO_BUILD/tests"
+mkdir -p "$AUDIO_BUILD/android/jni/lib/arm64-v8a" "$AUDIO_BUILD/native" "$AUDIO_BUILD/android/generated" "$AUDIO_BUILD/android/classes" "$AUDIO_BUILD/android/dex" "$AUDIO_BUILD/tests"
 javac --release 17 -d "$AUDIO_BUILD/tests" "$AUDIO_SOURCE/android/app/src/main/java/dev/kiraly/linuxaudio/RoutePolicy.java" "$AUDIO_SOURCE/tests/RoutePolicyTest.java" "$AUDIO_SOURCE/android/app/src/main/java/dev/kiraly/linuxaudio/PlaybackBuffer.java" "$AUDIO_SOURCE/tests/PlaybackBufferTest.java"
 java -cp "$AUDIO_BUILD/tests" dev.kiraly.linuxaudio.RoutePolicyTest > "$AUDIO_BUILD/tests/route-policy.log"
 java -cp "$AUDIO_BUILD/tests" dev.kiraly.linuxaudio.PlaybackBufferTest > "$AUDIO_BUILD/tests/playback-buffer.log"
@@ -16,6 +16,9 @@ COMMON=("$AUDIO_SOURCE/protocol.c" "$AUDIO_SOURCE/vendor/cJSON.c")
 "$AUDIO_NDK/aarch64-linux-android35-clang" "${CFLAGS[@]}" -fPIE -pie "$AUDIO_SOURCE/broker.c" "$AUDIO_SOURCE/framing.c" "${COMMON[@]}" -lm -o "$AUDIO_BUILD/native/linux-audiod"
 gcc -std=c99 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer "$AUDIO_SOURCE/broker.c" "$AUDIO_SOURCE/framing.c" "${COMMON[@]}" -lm -o "$AUDIO_BUILD/tests/broker-host"
 gcc -std=c99 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer "$AUDIO_SOURCE/tests/unit.c" "$AUDIO_SOURCE/latency.c" "$AUDIO_SOURCE/framing.c" "$AUDIO_SOURCE/ring.c" "${COMMON[@]}" -pthread -lm -o "$AUDIO_BUILD/tests/unit"
+gcc -std=c99 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined -fno-omit-frame-pointer "$AUDIO_SOURCE/tests/shared_test.c" "$AUDIO_SOURCE/shared.c" "$AUDIO_SOURCE/ring.c" "${COMMON[@]}" -pthread -lm -o "$AUDIO_BUILD/tests/shared-unit"
+"$AUDIO_BUILD/tests/shared-unit" > "$AUDIO_BUILD/tests/shared-unit.log" 2>&1
+"$AUDIO_NDK/aarch64-linux-android35-clang" "${CFLAGS[@]}" -fPIC -shared -Wl,-z,max-page-size=16384 "$AUDIO_SOURCE/native/aaudio_backend.c" "$AUDIO_SOURCE/shared.c" "$AUDIO_SOURCE/ring.c" "${COMMON[@]}" -laaudio -llog -ldl -lm -o "$AUDIO_BUILD/android/jni/lib/arm64-v8a/liblinux_audio.so"
 "$AUDIO_BUILD/tests/unit" > "$AUDIO_BUILD/tests/unit.log" 2>&1
 python3 "$AUDIO_SOURCE/tests/broker.py" "$AUDIO_BUILD/tests/broker-host" > "$AUDIO_BUILD/tests/broker.log" 2>&1
 python3 "$AUDIO_SOURCE/tests/desktop.py" "$AUDIO_SOURCE" > "$AUDIO_BUILD/tests/desktop.log" 2>&1
@@ -41,6 +44,7 @@ mapfile -t AUDIO_CLASSES < <(find "$AUDIO_BUILD/android/classes" -name '*.class'
 "$AUDIO_TOOLS/d8" --min-api 35 --lib "$AUDIO_JAR" --output "$AUDIO_BUILD/android/dex" "${AUDIO_CLASSES[@]}"
 cp "$AUDIO_BUILD/android/base.apk" "$AUDIO_BUILD/android/unsigned.apk"
 (cd "$AUDIO_BUILD/android/dex" && zip -q "$AUDIO_BUILD/android/unsigned.apk" classes*.dex)
+(cd "$AUDIO_BUILD/android/jni" && zip -0 -q "$AUDIO_BUILD/android/unsigned.apk" lib/arm64-v8a/liblinux_audio.so)
 "$AUDIO_TOOLS/zipalign" -P 16 -f 4 "$AUDIO_BUILD/android/unsigned.apk" "$AUDIO_BUILD/android/aligned.apk"
 if [[ ! -e "$AUDIO_SIGNING/linux-audio.keystore" ]]; then
     install -d -m 0700 "$AUDIO_SIGNING"

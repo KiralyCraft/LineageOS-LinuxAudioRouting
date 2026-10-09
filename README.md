@@ -6,11 +6,11 @@ This is a first hardware-test candidate, not a claim that every phone route is v
 
 ## Transport
 
-A root broker authenticates Linux UID 4000 and the exact Android helper package UID using SO_PEERCRED. It creates a Unix socketpair and passes its endpoints via SCM_RIGHTS. After handoff, audio goes directly between the helper and Linux; the broker handles control only and sleeps until control events or outstanding request deadlines.
+A root broker authenticates Linux UID 4000 and the exact Android helper package UID using SO_PEERCRED. It creates a Unix socketpair and passes its endpoints via SCM_RIGHTS. After handoff, the peers negotiate a shared PCM mapping or the legacy socket protocol; the broker handles control only and sleeps until control events or outstanding request deadlines.
 
-The transport copies **uncompressed, unchanged PCM bytes**. Media endpoints use float32 little-endian; Bluetooth SCO uses signed 16-bit little-endian mono. There is no codec, gain adjustment, DSP or sample conversion in the broker, framing, socket worker or FIFO. Byte-level tests include arbitrary float bit patterns and wrapped buffers. The only packet overhead is a 40-byte header; packets contain at most 10 ms of samples. Negotiated AudioTrack write acknowledgements provide buffer credits; playback position independently controls drain; there is no audio pacing sleep in the streaming path.
+The transport copies **uncompressed, unchanged PCM bytes**. Media endpoints use float32 little-endian; Bluetooth SCO uses signed 16-bit little-endian mono. There is no codec, gain adjustment, DSP or sample conversion in the broker, framing, socket worker or FIFO. Byte-level tests include arbitrary float bit patterns and wrapped buffers. With matching 0.1.6 peers, a sealed-size memfd ring carries PCM and eventfds carry wakeups; the socket carries descriptor setup and lifetime only. The native C backend calls AAudio directly on mapped sample spans, avoiding socket payloads and Java PCM arrays. The legacy path uses 40-byte packet headers and at most 10 ms of samples. Native consumption counters or legacy AudioTrack acknowledgements provide buffer credits; playback position independently controls drain; there is no audio pacing sleep in the streaming path.
 
-PipeWire handles ordinary mixing, Linux volume and device-clock rate adaptation. Android AudioTrack/AudioRecord, its HAL and Bluetooth may also convert formats or use a Bluetooth codec. Therefore “lossless” refers to the Android/Linux PCM transport, not a Bluetooth radio link or every mixer. Phone capture requests Android's unprocessed source where supported, otherwise voice recognition. Headset microphone mode uses Android's communication source and may include platform processing; the bridge enables no additional audio effects.
+PipeWire handles ordinary mixing, Linux volume and device-clock rate adaptation. Android AAudio/AudioTrack/AudioRecord, its HAL and Bluetooth may also convert formats or use a Bluetooth codec. Therefore “lossless” refers to the Android/Linux PCM transport, not a Bluetooth radio link or every mixer. Phone capture requests Android's unprocessed source where supported, otherwise voice recognition. Headset microphone mode uses Android's communication source and may include platform processing; the bridge enables no additional audio effects.
 
 Queues are bounded: 20 ms playback credit, an 80 ms playback FIFO, a capture FIFO with 80 ms of burst capacity plus its prefill, and an 80 ms pending queue for hardware-driven endpoints. Older helpers retain a 1500 ms compatibility queue, which can add startup latency. The matched 0.1.5 pair waits for route readiness before requesting graph audio. Queue overruns, malformed packets, sequence/epoch mismatch and lost routes stop the stream and report an error. Capture begins after 20 ms of queued data (40 ms for SCO, covering two observed 20 ms HAL blocks). A temporary empty capture FIFO keeps its samples and recorder, reports no data to PipeWire, and re-primes; PipeWire may expose a gap while actual samples arrive. The bridge does not insert silence or discard captured bytes. Normal playback idle drains its tail; call, unplug and stop intentionally retire the old epoch. A hardware route may have additional buffering, especially Bluetooth.
 
@@ -85,3 +85,28 @@ Validation separates isolated graph tests, root Android policy probes, and
 ordinary-helper live tests. See `diagnostics/android-routing/LATENCY-20261009.md`;
 YouTube synchronization, simultaneous physical microphones, calls, unplug and
 long-running stability still require validation with the matched installed pair.
+
+### 0.1.6 shared-memory candidate
+
+The matched APK and bridge negotiate shared PCM by default. Set
+`LINUX_AUDIO_SHARED_PCM=0` in the bridge environment to retain the legacy socket
+and Java audio path. An older helper or bridge also retains the old path. A
+failed native open is reported rather than silently changing the selected device.
+
+This removes interprocess sample serialization and Java staging, not every copy
+in the audio stack. PipeWire still transfers samples to/from the shared ring;
+AAudio shared mode may mix/copy internally, and the HAL/codec remains Android's.
+AAudio requests shared low-latency mode, with exact application format validation,
+explicit device selection, and a two-burst effective buffer. Actual MMAP use is
+logged by the helper; it is not assumed from a successful open.
+
+Hardware I/O and event readiness drive production. Bounded native waits permit
+cancellation; a 5 ms observation interval only retires an idle playback tail.
+Microphone pause immediately quiesces the producer before delayed manager cleanup.
+No sample dropping, gain adjustment or conversion is added to the bridge.
+
+Native Bluetooth presentation timestamps are withheld until their relationship
+to codec/headset delay is validated. A low MMAP timestamp does not prove low
+acoustic latency. The user's SBC selection is preserved; Android's negotiated
+codec must be recorded for latency comparisons. Ordinary-app routing, capture,
+call recovery, headset latency and long-running stability remain live-test gates.

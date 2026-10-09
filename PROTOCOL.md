@@ -73,3 +73,39 @@ bounded by allocated capacity. Route readiness includes consumed-frame progress
 and a stable silence-only warmup; no Linux PCM is consumed during this warmup.
 Further adjustments change capacity, never sample content. The five-second
 route-preparation deadline is a failure bound, not a playback delay.
+
+## Shared PCM and native AAudio (0.1.6)
+
+Endpoint capability, open request and open reply must all agree on
+`shared_pcm:true`. Missing capability or `LINUX_AUDIO_SHARED_PCM=0` retains the
+existing packet protocol. The authenticated broker is unchanged. After direct
+socket handoff Linux sends three `F`/SCM_RIGHTS messages in order: sealed-size
+memfd, producer eventfd, consumer eventfd. Android validates descriptor type,
+size/seals, version, epoch, format and capacity before starting AAudio. The socket
+then carries no PCM; shutdown/HUP cancels the epoch.
+
+The ABI is little-endian AArch64 with naturally aligned fixed-width fields,
+version 1, magic `0x53445541`, and data at offset 4096. `include/shared.h` is the
+canonical layout (120-byte header). Monotonic reader/writer counters count bytes,
+not slots or frames; ring offsets use modulo capacity. One producer owns writer
+and one consumer owns reader. Sample publication and retirement use release
+stores and acquire loads. Capacity comes from the validated sealed allocation,
+not mutable per-operation metadata. A counter distance greater than capacity or
+non-frame-aligned positions fail the stream.
+
+Playback: Linux writes; Android consumes via AAudio. Capture: Android writes via
+AAudio; Linux consumes. Eventfds notify publication/retirement and are hints:
+consumers always recheck counters. PCM never travels through the broker or Java.
+A seqlock-protected metadata record carries played frames and clock observations.
+Presentation reporting is separately negotiated; it is disabled for native
+Bluetooth until calibrated. Writer/reader equality alone does not complete
+playback drain: the native played frontier must also reach the written frontier.
+
+Normal capacity remains 80 ms for output, and 80 ms plus capture prefill for
+input; capacity is a bound, not a target backlog. Native I/O handles partial
+transfers and ring wrap without sample modification. Capture overrun is an
+explicit discontinuity failure; samples are not silently discarded to catch up.
+Stopped/error fields invalidate the epoch. Stop signals cancellation, shuts down
+the lifetime socket and wakes waiters; mappings/native streams are freed only
+after their worker has returned. Pausing a PipeWire capture quiesces its producer
+immediately; existing barriers protect final retirement.

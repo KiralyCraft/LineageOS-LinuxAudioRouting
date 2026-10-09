@@ -286,6 +286,10 @@ static void _pipewire_state(void *__context, enum pw_stream_state __old, enum pw
 	fprintf(stderr, "Endpoint state %s: %s -> %s\n", _endpoint->key, pw_stream_state_as_string(__old), pw_stream_state_as_string(__state));
 	if (__state != PW_STREAM_STATE_STREAMING)
 	{
+		if (_endpoint->capture != 0 && __atomic_load_n(&_endpoint->processing, __ATOMIC_ACQUIRE) != 0)
+		{
+			transport_cancel_capture(&_endpoint->transport);
+		}
 		_endpoint->inFlight = 0;
 	}
 	__atomic_store_n(&_endpoint->wanted, __state == PW_STREAM_STATE_STREAMING, __ATOMIC_RELEASE);
@@ -354,6 +358,7 @@ static void _pipewire_buffer(pipewire_endpoint_t *__endpoint, struct pw_buffer *
 			if (_available >= _requested)
 			{
 				_length = ring_read(&_endpoint->transport.ring, _data->data, _requested);
+				transport_wake(&_endpoint->transport);
 			}
 			else
 			{

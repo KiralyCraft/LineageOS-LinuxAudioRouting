@@ -29,6 +29,8 @@ final class StreamIo implements AutoCloseable, Runnable
 	private volatile boolean cancelled;
 	final boolean headset;
 	final boolean writeCredit;
+	final boolean sharedPcm;
+	private long nativeHandle;
 	final boolean presentationClock;
 	private PlaybackBuffer playbackBuffer;
 	private final AudioTimestamp presentation = new AudioTimestamp();
@@ -85,7 +87,9 @@ final class StreamIo implements AutoCloseable, Runnable
 		capture = device.getString("direction").equals("input");
 		captureSource = device.optInt("capture_source", MediaRecorder.AudioSource.UNPROCESSED);
 		writeCredit = !capture && request.optBoolean("write_credit", false);
-		presentationClock = !capture && request.optBoolean("presentation_clock", false);
+		sharedPcm = request.optBoolean("shared_pcm", false);
+		// MMAP Bluetooth timestamps have not been calibrated to acoustic output.
+		presentationClock = !capture && request.optBoolean("presentation_clock", false) && (!sharedPcm || (selected.getType() != AudioDeviceInfo.TYPE_BLUETOOTH_A2DP && selected.getType() != AudioDeviceInfo.TYPE_BLUETOOTH_SCO));
 		headset = device.getString("profile").equals("headset");
 		rate = request.getInt("rate");
 		channels = request.getInt("channels");
@@ -120,7 +124,11 @@ final class StreamIo implements AutoCloseable, Runnable
 		{
 			if (!live)
 				throw new IOException("Stream was cancelled during preparation");
-			if (capture)
+			if (sharedPcm)
+			{
+				nativeHandle = NativeAudio.create(selected.getId(), rate, channels, sampleBytes, capture, captureSource, headset, epoch, presentationClock, service.getPackageName());
+			}
+			else if (capture)
 			{
 				int minimum = AudioRecord.getMinBufferSize(rate, mask, encoding);
 				if (minimum <= 0)
@@ -159,7 +167,11 @@ final class StreamIo implements AutoCloseable, Runnable
 				if (!track.setPreferredDevice(selected))
 					throw new IOException("Playback route rejected");
 			}
-			if (capture)
+			if (sharedPcm)
+			{
+				// AAudio reports disconnection through its native error callback.
+			}
+			else if (capture)
 				recorder.addOnRoutingChangedListener(routeListener, new Handler(android.os.Looper.getMainLooper()));
 			else
 				track.addOnRoutingChangedListener(routeListener, new Handler(android.os.Looper.getMainLooper()));
@@ -202,6 +214,15 @@ final class StreamIo implements AutoCloseable, Runnable
 			return true;
 		}
 		return false;
+	}
+
+	void nativeReady(int device, boolean mmap) throws Exception
+	{
+		if (device != selected.getId() || !live)
+			throw new IOException("Native audio route lost");
+		verified = true;
+		android.util.Log.i("LinuxAudio", "Shared PCM AAudio stream=" + id + " device=" + device + " mmap=" + mmap);
+		service.streamRoute(this, device);
 	}
 
 	void activate()
@@ -384,6 +405,21 @@ final class StreamIo implements AutoCloseable, Runnable
 				throw new IOException("Linux PCM attachment timed out");
 			if (!live || service.suspended)
 				return;
+			if (sharedPcm)
+			{
+				android.os.ParcelFileDescriptor nativeSocket;
+				synchronized (resources)
+				{
+					if (!live)
+						return;
+					nativeSocket = wire.duplicateNativeDescriptor();
+				}
+				try (nativeSocket)
+				{
+					NativeAudio.run(nativeHandle, nativeSocket.getFd(), this);
+				}
+				return;
+			}
 			verifyRoute();
 			if (capture)
 				capture();
@@ -417,6 +453,11 @@ final class StreamIo implements AutoCloseable, Runnable
 		if (released)
 			return;
 		released = true;
+		if (nativeHandle != 0)
+		{
+			NativeAudio.destroy(nativeHandle);
+			nativeHandle = 0;
+		}
 		if (track != null)
 		{
 			track.removeOnRoutingChangedListener(routeListener);
@@ -452,6 +493,8 @@ final class StreamIo implements AutoCloseable, Runnable
 		synchronized (resources)
 		{
 			live = false;
+			if (nativeHandle != 0)
+				NativeAudio.cancel(nativeHandle);
 			activated.countDown();
 			if (wire != null)
 				wire.close();

@@ -28,7 +28,23 @@ def attach(request):
     fds=array.array('i');fds.frombytes(anc[0][2]);assert len(fds)==1
     d=socket.socket(fileno=fds[0]);s.close();d.settimeout(4);return d
 header=struct.Struct('<IIQQQII')
+def shared_transfer(d,request):
+    from shared_fixture import SharedFixture
+    fixture=None
+    try:
+        fixture=SharedFixture(d,request)
+        def collect(data):
+            if request['endpoint'].startswith('fixture.native'):native_samples.extend(data)
+            elif request['endpoint']=='fixture.alternate':alternate_samples.extend(data)
+            else:samples.extend(data)
+        fixture.run(collect)
+    except (EOFError,OSError):pass
+    except Exception as e:errors.append(repr(e))
+    finally:
+        if fixture is not None:fixture.close()
+
 def consume(d,request):
+    if request.get("shared_pcm"):return shared_transfer(d,request)
     frame=0;played=0;lock=threading.Lock();progress=threading.Condition(lock);stopped=threading.Event()
     width=request['channels']*(2 if request['format']=='s16le' else 4)
     epoch=request['epoch']
@@ -85,6 +101,7 @@ def consume(d,request):
     except Exception as e:errors.append(repr(e))
     finally:stopped.set();ticker.join(timeout=1)
 def produce(d,request):
+    if request.get("shared_pcm"):return shared_transfer(d,request)
     frame=0;deadline=time.monotonic();periods=0;stalled=False
     headset=request.get('format')=='s16le';width=2 if headset else 4
     frames=request['rate']//50 if headset else request['rate']//100
@@ -121,8 +138,9 @@ def helper_loop(helper):
                 time.sleep(1.7 if request['endpoint']=='fixture.output' else .04)
                 d=attach(request);direct[request['stream']]=(d,request)
                 # Keep one legacy endpoint to exercise negotiated fallback.
+                request['shared_pcm']=bool(request.get('shared_pcm'))
                 request['write_credit']=bool(request.get('write_credit')) and request['endpoint']!='fixture.alternate' and not request['endpoint'].endswith('input')
-                send(helper,dict(op='reply',id=request['id'],ok=True,stream=request['stream'],epoch=request['epoch'],token=request['token'],write_credit=request['write_credit'],presentation_clock=request.get('presentation_clock',False)))
+                send(helper,dict(op='reply',id=request['id'],ok=True,stream=request['stream'],epoch=request['epoch'],token=request['token'],shared_pcm=request['shared_pcm'],write_credit=request['write_credit'],presentation_clock=request.get('presentation_clock',False)))
             elif op=='activate':
                 d,r=direct[request['stream']]
                 send(helper,dict(op='route',stream=r['stream'],epoch=r['epoch'],endpoint=r['endpoint'],actual_android_id=1,verified=True))
@@ -163,6 +181,8 @@ with tempfile.TemporaryDirectory(prefix='audio-pw-') as directory:
         devices.append(dict(devices[1],key='fixture.headset.input',name='Fixture headset microphone',group='headset',rate=16000,format='s16le',profile='headset'))
         native_devices=[dict(devices[1],key='fixture.native.input'),dict(devices[1],key='fixture.native.output',direction='output'),dict(devices[-1],key='fixture.native.headset.input')]
         native_devices.append(dict(native_devices[1],key='fixture.native.undrained'))
+        for device in devices+native_devices:
+            device['shared_pcm']=os.environ.get('AUDIO_SHARED_FIXTURE')=='1' and device['key']!='fixture.alternate'
         send(helper,dict(op='inventory',devices=devices+native_devices,suspended=False,reason=''))
         time.sleep(.05)
         for operation,direction in [('playback','output'),('capture','input'),('capture-headset','headset.input')]:
@@ -324,5 +344,5 @@ with tempfile.TemporaryDirectory(prefix='audio-pw-') as directory:
 print('PASS isolated production PipeWire/native stack; no hardware audio touched')
 
 artifacts=['native/linux-audio-bridge','tests/broker-arm','tests/transport-fixture']
-attestation=dict(artifacts={name:hashlib.sha256((build/name).read_bytes()).hexdigest() for name in artifacts},script_sha256=hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),clock_driver=os.environ.get('LINUX_AUDIO_CLOCK_DRIVER','negotiated'),result='PASS')
-(build/'tests/integration-attestation.json').write_text(json.dumps(attestation,indent=2)+'\n')
+attestation=dict(artifacts={name:hashlib.sha256((build/name).read_bytes()).hexdigest() for name in artifacts},script_sha256=hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest(),clock_driver=os.environ.get('LINUX_AUDIO_CLOCK_DRIVER','negotiated'),shared_pcm=os.environ.get('AUDIO_SHARED_FIXTURE')=='1',shared_fixture_sha256=hashlib.sha256((source/'tests/shared_fixture.py').read_bytes()).hexdigest(),result='PASS')
+(build/('tests/integration-shared-attestation.json' if os.environ.get('AUDIO_SHARED_FIXTURE')=='1' else 'tests/integration-attestation.json')).write_text(json.dumps(attestation,indent=2)+'\n')

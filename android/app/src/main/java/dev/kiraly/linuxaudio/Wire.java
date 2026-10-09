@@ -102,6 +102,13 @@ final class Wire implements AutoCloseable
 		output = new ParcelFileDescriptor.AutoCloseOutputStream(ParcelFileDescriptor.dup(descriptor));
 	}
 
+	ParcelFileDescriptor duplicateNativeDescriptor() throws IOException
+	{
+		if (inputDescriptor == null)
+			throw new IOException("Missing native stream descriptor");
+		return ParcelFileDescriptor.dup(inputDescriptor.getFileDescriptor());
+	}
+
 	void send(JSONObject message) throws IOException
 	{
 		byte[] bytes = message.toString().getBytes(StandardCharsets.UTF_8);

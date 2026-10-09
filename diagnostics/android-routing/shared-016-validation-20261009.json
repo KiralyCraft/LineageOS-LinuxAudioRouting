@@ -1,0 +1,39 @@
+{
+  "integration-attestation.json": {
+    "artifacts": {
+      "native/linux-audio-bridge": "4167f8ffc6ec3f8a0312e7470b5e7c8c661caaff22fdbb518b7fc1df27a7712c",
+      "tests/broker-arm": "2249684a9d8fb4f0b9aba65eff6f8cf2dac79bd9478087bc4507272e43247721",
+      "tests/transport-fixture": "1293d10ff7b199d65b4d2dabf74b998746d976f97f5ba24047f1c4005928f754"
+    },
+    "script_sha256": "058a937c389dca976354bcc35114ce94073bf13f4b4f1e23d2df05a16371bf48",
+    "clock_driver": "negotiated",
+    "shared_pcm": false,
+    "shared_fixture_sha256": "97ddf52ff9e210c0e86f37b71371347498ad820922492ae026e8197696ebd1d2",
+    "result": "PASS"
+  },
+  "integration-shared-attestation.json": {
+    "artifacts": {
+      "native/linux-audio-bridge": "4167f8ffc6ec3f8a0312e7470b5e7c8c661caaff22fdbb518b7fc1df27a7712c",
+      "tests/broker-arm": "2249684a9d8fb4f0b9aba65eff6f8cf2dac79bd9478087bc4507272e43247721",
+      "tests/transport-fixture": "1293d10ff7b199d65b4d2dabf74b998746d976f97f5ba24047f1c4005928f754"
+    },
+    "script_sha256": "058a937c389dca976354bcc35114ce94073bf13f4b4f1e23d2df05a16371bf48",
+    "clock_driver": "negotiated",
+    "shared_pcm": true,
+    "shared_fixture_sha256": "97ddf52ff9e210c0e86f37b71371347498ad820922492ae026e8197696ebd1d2",
+    "result": "PASS"
+  },
+  "physical_audio": "pending installation of matched helper and Linux bridge",
+  "codec_observation": {
+    "codec": "SBC",
+    "sample_rate": 44100,
+    "sample_bits": 16,
+    "channels": "stereo",
+    "bitpool_range": [
+      8,
+      53
+    ],
+    "source": "Android dumpsys bluetooth_manager; user selection preserved",
+    "acoustic_latency": "not measured"
+  }
+}

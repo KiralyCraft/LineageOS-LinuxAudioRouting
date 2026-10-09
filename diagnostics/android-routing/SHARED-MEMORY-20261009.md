@@ -88,3 +88,28 @@ Sources: [AAudio/MMAP architecture](https://source.android.com/docs/core/audio/a
 Numeric probe results are in `shared-memory-probe-20261009.json`. Diagnostic
 sources are `AudioProfileProbe.java` (compile with PlaybackBuffer.java) and
 `aaudio_probe.c` (link libaaudio and libdl). Raw device dumps remain in tmpfs.
+
+
+## Implemented candidate 0.1.6
+
+The candidate now uses a versioned memfd ring, eventfd notifications, and a C99
+JNI AAudio backend. Android and Linux negotiate it explicitly; the legacy path
+remains selectable with `LINUX_AUDIO_SHARED_PCM=0`. Per-application PipeWire
+routing and Android reservations/call ownership remain unchanged.
+
+Build-time and isolated transport/graph results are in the release manifest.
+These tests do not validate the ordinary Android helper's access to MMAP or
+its physical routing. The root feasibility probe above remains a separate result.
+The matched update must be manually installed and activated before those tests.
+
+The user selected SBC during development. Android confirmed SBC at 44.1 kHz,
+16-bit stereo (configured bitpool range 8..53); no audible-latency measurement
+was made after that selection. Preserve this codec for the next comparison.
+Do not equate this setting with a verified desktop SBC-XQ configuration.
+
+Implementation references: [AAudio stream lifecycle and I/O](https://developer.android.com/ndk/guides/audio/aaudio/aaudio)
+and [AAudio MMAP architecture](https://source.android.com/docs/core/audio/aaudio).
+A two-burst request is not proof of end-to-end latency. Shared mode may still
+copy/mix, and Bluetooth timestamps may omit headset/codec buffering; the candidate
+therefore disables native Bluetooth presentation-latency publication pending
+calibration, while retaining native consumption counters for flow control.

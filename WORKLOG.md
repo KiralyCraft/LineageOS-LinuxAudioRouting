@@ -106,3 +106,42 @@ until normal restart. Defaults and per-device volume/mute were restored.
 User-visible YouTube lip-sync, incompatible-profile capture transitions and
 long-duration/dropout testing remain separate acceptance checks. No Magisk
 module was installed and no other application or graphics service was stopped.
+
+## 0.1.6 shared PCM / native AAudio candidate (2026-10-09)
+
+Replaces negotiated socket PCM with a sealed memfd ring and eventfd readiness.
+Linux and Android retain one producer/consumer per epoch; C99 AAudio reads/writes
+mapped spans directly. Control, Android route reservations, call priority and
+PipeWire per-application routing remain in their existing owners. Old peers and
+LINUX_AUDIO_SHARED_PCM=0 keep the Java/socket path. This removes serialization
+and Java staging, not all mixing/HAL copies or Bluetooth codec buffering.
+
+The user changed Bluetooth from AAC to SBC during development. Android dumpsys
+confirmed current/configured SBC, 44.1 kHz, 16-bit stereo, bitpool range 8..53.
+No codec setting was changed by the implementation. The earlier root MMAP probe
+is feasibility evidence only; native Bluetooth presentation metadata is withheld
+until calibrated against actual output delay.
+
+Capture pause now immediately cancels production before serialized manager
+cleanup. The isolated legacy regression test initially caught its intentional
+socket shutdown being classified as reason 11 (route failure), after the headset
+source entered PAUSED. Cancellation now suppresses that expected I/O failure;
+the native transport fixture explicitly cancels each capture before retirement
+and checks that no failure was latched. The new ring observer takes a coherent
+counter snapshot, and native callback cancellation uses a private lifetime-safe
+wake fd and an owned duplicate of the Java socket.
+
+Builds run only on root@192.168.104.201. Host ASan/UBSan tests exercise real
+SCM_RIGHTS transfer, sealed allocations, bidirectional 1 MiB bit-exact wraparound,
+event wakeups, epoch rejection and invalid counters. On-phone graph fixtures
+use an isolated PipeWire server and simulated Android; they do not touch real
+audio routes. Release attestations must match the final binaries. Ordinary-app
+AAudio/MMAP, physical microphone and profile transitions, calls/unplug, SBC
+latency and long-duration behavior remain pending manual APK installation.
+
+Final isolated runs passed for both shared PCM and legacy sockets, including the
+capture cancellation assertion, partial final playback drain, float/S16 capture,
+concurrent destinations, a live application move, retained busy/unplugged nodes,
+and simulated call/reconnect. Exact native artifact and test hashes are recorded
+in `diagnostics/android-routing/shared-016-validation-20261009.json`. These are
+transport/graph acceptance results, not physical AAudio/codec latency acceptance.
