@@ -176,3 +176,28 @@ helper 0.1.6. Missing allocation-owner capability correctly selected sockets.
 A stereo WAV completed and the bottom microphone returned 330752 frames in
 7.015 s (325948 nonzero samples), with no client error. Defaults remain bottom
 microphone/stereo headphones. The 0.1.7 APK native path still awaits installation.
+
+
+## 0.1.7 installed-helper validation (2026-10-09)
+
+Verified manual installation of helper 0.1.7/code 8. The already running matched
+bridge negotiated Android-owned shared PCM successfully with SELinux enforcing;
+no policy modifications were needed. Ordinary-app AAudio reported MMAP for
+standalone speaker and A2DP playback. Simultaneous speaker/A2DP applications
+completed: speaker used MMAP, Bluetooth used the AAudio non-MMAP fallback. The
+219 sampled headers (also including overlapping phone capture) reported zero
+xruns. One stale-inventory admission race retried successfully; there were zero
+terminal transport failures during the controlled tests.
+
+All three phone microphones and SCO headset capture returned nonzero samples;
+SCO playback completed. Switching back to explicit Stereo restored A2DP MMAP
+and bottom-phone capture without restarting helper or bridge. One live owned
+Pulse stream moved stereo -> speakers -> stereo and completed. All samples were
+discarded from RAM; only counts, peaks and metadata were retained. Final defaults
+are bottom phone microphone and stereo headphones; the codec remains SBC.
+
+Recorded facts and binary identity are in `live-017-20261009.json`. Client exit,
+verified route and sample counters are software evidence, not confirmation of
+what the user heard or acoustic latency. Game/YouTube latency, subtle glitches,
+call/unplug recovery and long-duration behavior remain acceptance tests. No
+hardware buffer timestamp is used to claim Bluetooth end-to-end delay.

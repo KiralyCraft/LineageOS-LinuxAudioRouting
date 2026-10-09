@@ -1,0 +1,136 @@
+{
+  "version": "0.1.7/code8",
+  "bridge_sha256": "06ce9fe3293e7ccdb7b74c565731dcfb9ab2d0f11f376527bf6d678aafb829fd",
+  "codec": "SBC",
+  "selinux": "Enforcing; no policy changes",
+  "transport": "Android-owned shared PCM active",
+  "end_to_end_latency": "not measured",
+  "microphones": {
+    "bottom-mic": {
+      "duration_seconds": 7.016,
+      "frames": 329728,
+      "nonzero_samples": 324818,
+      "peak": 0.0004317757557146251,
+      "client_error": "",
+      "source": "linux-audio.input.15.be9b7607e070383c083b082c"
+    },
+    "top-mic": {
+      "duration_seconds": 7.012,
+      "frames": 328704,
+      "nonzero_samples": 323593,
+      "peak": 0.0007557974895462394,
+      "client_error": "",
+      "source": "linux-audio.input.15.28720365c5e7476a011e4f43"
+    },
+    "back-mic": {
+      "duration_seconds": 7.017,
+      "frames": 328704,
+      "nonzero_samples": 323671,
+      "peak": 0.0004576444625854492,
+      "client_error": "",
+      "source": "linux-audio.input.15.3c482346f375027677fa8a0d"
+    },
+    "bottom-repeat": {
+      "duration_seconds": 7.019,
+      "frames": 330240,
+      "nonzero_samples": 324439,
+      "peak": 0.000486434088088572,
+      "client_error": "",
+      "source": "linux-audio.input.15.be9b7607e070383c083b082c"
+    },
+    "headset-mic": {
+      "duration_seconds": 7.024,
+      "frames": 316928,
+      "nonzero_samples": 291423,
+      "peak": 0.00017270617536269128,
+      "client_error": "",
+      "source": "linux-audio.input.7.b50587de8e48120d007bdae3"
+    },
+    "bottom-after-headset": {
+      "duration_seconds": 7.017,
+      "frames": 330752,
+      "nonzero_samples": 325207,
+      "peak": 0.0005206234054639935,
+      "client_error": "",
+      "source": "linux-audio.input.15.be9b7607e070383c083b082c"
+    }
+  },
+  "playback": {
+    "speaker": "client exit 0; device 3 verified; MMAP true",
+    "stereo": "client exit 0; device 38 verified; MMAP true",
+    "headset": "client exit 0; device 43 verified; MMAP false",
+    "stereo_after_headset": "client exit 0; device 38 verified; MMAP true"
+  },
+  "application_move": [
+    {
+      "target": "linux-audio.output.2.964222d73e202407d6c9693d",
+      "confirmed": true
+    },
+    {
+      "target": "linux-audio.output.8.b50587de8e48120d007bdae3",
+      "confirmed": true
+    },
+    {
+      "exit": 0,
+      "error": ""
+    }
+  ],
+  "simultaneous_outputs": [
+    {
+      "device": "linux-audio.output.2.964222d73e202407d6c9693d",
+      "exit": 0,
+      "error": ""
+    },
+    {
+      "device": "linux-audio.output.8.b50587de8e48120d007bdae3",
+      "exit": 0,
+      "error": ""
+    }
+  ],
+  "shared_counter_samples": [
+    {
+      "epoch": 7664,
+      "capture": 0,
+      "mmap": 1,
+      "samples": 94,
+      "xruns_first": 0,
+      "xruns_last": 0,
+      "queued_bytes_median": 8312.0,
+      "error": 0
+    },
+    {
+      "epoch": 7669,
+      "capture": 0,
+      "mmap": 0,
+      "samples": 100,
+      "xruns_first": 0,
+      "xruns_last": 0,
+      "queued_bytes_median": 8192.0,
+      "error": 0
+    },
+    {
+      "epoch": 7674,
+      "capture": 1,
+      "mmap": 0,
+      "samples": 25,
+      "xruns_first": 0,
+      "xruns_last": 0,
+      "queued_bytes_median": 660,
+      "error": 0
+    }
+  ],
+  "stream_failures": 0,
+  "stale_inventory_retries": 1,
+  "helper_events": [
+    "10-09 23:43:51.741 17422 19807 I LinuxAudio: Shared PCM AAudio stream=7695 device=48 mmap=false",
+    "10-09 23:44:10.874 17422 20217 I LinuxAudio: Shared PCM AAudio stream=7702 device=38 mmap=true",
+    "10-09 23:44:11.011 17422 20229 I LinuxAudio: Shared PCM AAudio stream=7707 device=23 mmap=false",
+    "10-09 23:44:40.460 17422 20774 I LinuxAudio: Shared PCM AAudio stream=7712 device=38 mmap=true",
+    "10-09 23:44:42.681 17422 20847 I LinuxAudio: Shared PCM AAudio stream=7717 device=3 mmap=true",
+    "10-09 23:44:45.307 17422 20900 I LinuxAudio: Shared PCM AAudio stream=7722 device=38 mmap=true"
+  ],
+  "defaults": {
+    "input": "Phone Microphone bottom",
+    "output": "JBL Tune 770NC stereo"
+  }
+}

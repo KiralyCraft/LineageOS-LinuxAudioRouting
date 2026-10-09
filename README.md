@@ -119,4 +119,7 @@ and exports the ring in the Android helper, using the existing app-domain tmpfs
 transition. Linux validates and imports it. No SELinux rules or enforcement mode
 are changed. Allocation ownership is negotiated explicitly, so mixed 0.1.6 and
 0.1.7 pairs choose the legacy socket path instead of disagreeing about which peer
-sends descriptors. This correction still needs installed-helper validation.
+sends descriptors. Installed-helper tests passed for playback, all four microphones, simultaneous
+speaker/stereo streams and return from headset mode. See
+`diagnostics/android-routing/live-017-20261009.json`; audible quality, game latency,
+calls/unplug and long-duration behavior remain separate acceptance checks.
