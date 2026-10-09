@@ -10,7 +10,7 @@ for dependency in pipewire pipewire-pulse wireplumber pw-cli wpctl pactl pavucon
     command -v "$dependency" >/dev/null || { printf 'Missing %s; install pipewire pipewire-pulse wireplumber libpulse pavucontrol first.\n' "$dependency" >&2; exit 1; }
 done
 mkdir -p "$AUDIO_PREFIX" "$HOME/.local/bin" "$HOME/.local/share/applications"
-cp -a "$AUDIO_BUNDLE/linux/." "$AUDIO_PREFIX/"
+python3 "$AUDIO_BUNDLE/linux/install-files.py" "$AUDIO_BUNDLE/linux" "$AUDIO_PREFIX"
 for command in linux-audio with-linux-audio linux-audioctl; do
     AUDIO_LINK=$HOME/.local/bin/$command
     if [[ -e $AUDIO_LINK || -L $AUDIO_LINK ]]; then
