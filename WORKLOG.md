@@ -78,3 +78,31 @@ reapplying the effective limit fixes that case. These short probe runs are not
 ordinary-helper YouTube or long-soak validation. The APK is versioned separately
 as 0.1.5/code 6 for manual installation. No Magisk installation is authorized or
 needed for the live candidate update.
+
+## 0.1.5 installed-helper validation (2026-10-09)
+
+Verified helper 0.1.5/code 6 after manual installation and Start. Switched only
+the Linux bridge; retained PipeWire, WirePlumber, Pulse server and Firefox.
+Numeric results are in `diagnostics/android-routing/live-015-20261009.json`.
+Speaker, SCO and A2DP WAV playback completed without client/route errors; moving
+one owned Pulse stream speaker -> stereo -> speaker -> headset -> speaker
+verified each destination. Separate speaker and stereo applications completed
+concurrently. Timestamp-based presentation delay is approximately 57 ms for
+speakers, 137 ms for SCO and 375 ms for A2DP. This excludes application-side
+queueing and is not acoustic measurement. The real Pulse client reported about
+0.41 seconds on A2DP, demonstrating downstream delay propagation.
+
+All three phone microphones and the headset microphone delivered nonzero
+samples individually. A clean simultaneous top-phone/SCO test returned roughly
+319000 frames per client over seven seconds at 48 kHz, including startup.
+An earlier simultaneous test overlapped an incompatible stereo request and
+returned excessive headset frames/re-primes; keep this transition issue open,
+rather than treating it as either steady-state success or a proven dual-input
+clock defect. Samples were discarded in RAM; only counts/peaks were saved.
+
+The matched bridge is supervised and selected for future desktop launches;
+the already-running old-prefix supervisor follows a bridge symlink to 0.1.5
+until normal restart. Defaults and per-device volume/mute were restored.
+User-visible YouTube lip-sync, incompatible-profile capture transitions and
+long-duration/dropout testing remain separate acceptance checks. No Magisk
+module was installed and no other application or graphics service was stopped.

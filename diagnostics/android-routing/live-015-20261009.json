@@ -1,0 +1,148 @@
+{
+  "version": "0.1.5",
+  "commit": "51fff446f76a6ce6c3fac5e588c853c9f660e0e1",
+  "bridge_sha256": "6ade6ecbf6af3991341848fada29896a5a6dcb8d468f447a9a080a8e8d4d5046",
+  "presentation_estimates": {
+    "speakers": {
+      "epoch": 7343,
+      "samples": 39,
+      "median_ms": 57.06,
+      "minimum_ms": 52.2,
+      "maximum_ms": 64.899
+    },
+    "headset": {
+      "epoch": 7348,
+      "samples": 37,
+      "median_ms": 136.918,
+      "minimum_ms": 64.03,
+      "maximum_ms": 150.062
+    },
+    "stereo": {
+      "epoch": 7353,
+      "samples": 34,
+      "median_ms": 376.486,
+      "minimum_ms": 369.56,
+      "maximum_ms": 403.922
+    }
+  },
+  "pulse_stereo_client_latency_median_us": 412846.0,
+  "playback": [
+    {
+      "route": "speaker",
+      "exit": 0,
+      "error": ""
+    },
+    {
+      "route": "headset",
+      "exit": 0,
+      "error": ""
+    },
+    {
+      "route": "stereo",
+      "exit": 0,
+      "error": ""
+    }
+  ],
+  "moves": [
+    {
+      "step": "speaker",
+      "target": "linux-audio.output.2.964222d73e202407d6c9693d",
+      "active": true,
+      "sink": 1635
+    },
+    {
+      "step": "stereo",
+      "target": "linux-audio.output.8.b50587de8e48120d007bdae3",
+      "active": true,
+      "sink": 1637
+    },
+    {
+      "step": "speaker-return",
+      "target": "linux-audio.output.2.964222d73e202407d6c9693d",
+      "active": true,
+      "sink": 1635
+    },
+    {
+      "step": "headset",
+      "target": "linux-audio.output.7.b50587de8e48120d007bdae3",
+      "active": true,
+      "sink": 1636
+    },
+    {
+      "step": "speaker-final",
+      "target": "linux-audio.output.2.964222d73e202407d6c9693d",
+      "active": true,
+      "sink": 1635
+    }
+  ],
+  "capture_single": [
+    {
+      "test": "top",
+      "result": {
+        "duration_seconds": 7.015,
+        "frames": 330240,
+        "nonzero_samples": 325357,
+        "peak": 0.0070362091064453125,
+        "client_error": "",
+        "source": "linux-audio.input.15.28720365c5e7476a011e4f43"
+      }
+    },
+    {
+      "test": "bottom",
+      "result": {
+        "duration_seconds": 7.009,
+        "frames": 330752,
+        "nonzero_samples": 325992,
+        "peak": 0.008871335536241531,
+        "client_error": "",
+        "source": "linux-audio.input.15.be9b7607e070383c083b082c"
+      }
+    },
+    {
+      "test": "back",
+      "result": {
+        "duration_seconds": 7.006,
+        "frames": 329216,
+        "nonzero_samples": 324568,
+        "peak": 0.0057373205199837685,
+        "client_error": "",
+        "source": "linux-audio.input.15.3c482346f375027677fa8a0d"
+      }
+    },
+    {
+      "test": "headset",
+      "result": {
+        "duration_seconds": 7.013,
+        "frames": 320000,
+        "nonzero_samples": 286607,
+        "peak": 0.03464803472161293,
+        "client_error": "",
+        "source": "linux-audio.input.7.b50587de8e48120d007bdae3"
+      }
+    }
+  ],
+  "capture_concurrent_clean": [
+    {
+      "duration_seconds": 7.013,
+      "frames": 318976,
+      "nonzero_samples": 314529,
+      "peak": 0.010046383365988731,
+      "client_error": "",
+      "source": "linux-audio.input.15.28720365c5e7476a011e4f43"
+    },
+    {
+      "duration_seconds": 7.024,
+      "frames": 319488,
+      "nonzero_samples": 258857,
+      "peak": 0.04150931537151337,
+      "client_error": "",
+      "source": "linux-audio.input.7.b50587de8e48120d007bdae3"
+    }
+  ],
+  "caveats": [
+    "Timestamp estimates are not acoustic loopback measurements.",
+    "First concurrent capture overlapped a stereo-output request and returned excessive headset frames; not a valid steady-state result. Incompatible-profile transition remains to be isolated.",
+    "No microphone PCM was stored.",
+    "No user-confirmed YouTube lip-sync or long soak yet."
+  ]
+}
