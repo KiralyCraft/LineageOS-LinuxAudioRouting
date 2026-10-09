@@ -198,7 +198,7 @@ public final class AudioService extends Service
 			}
 			updatePolicy();
 			stream = new StreamIo(this, request, device, descriptor);
-			routes.reserve(stream.id, endpoint, descriptor.getString("resource"), descriptor.getString("name"));
+			routes.reserve(stream.id, endpoint, descriptor.getString("resource"), descriptor.getString("name"), stream.headset);
 			if (!policy.acquire())
 				throw new IOException("Android denied audio focus");
 			streams.put(stream.id, stream);
@@ -259,11 +259,10 @@ public final class AudioService extends Service
 			if (descriptor != null && descriptor.optString("group").equals(group) && stream.headset != profile.equals("headset"))
 				retire(stream);
 		}
-		if (profile.equals("headset") && !policy.headset(communication))
-			throw new IOException("Android headset profile unavailable");
-		if (profile.equals("stereo"))
-			policy.releaseCommunication();
+		// Selecting a profile is admission policy, not an active call. Acquire
+		// communication routing only when StreamIo prepares a headset stream.
 		explicitProfiles.put(group, profile);
+		updatePolicy();
 		publishInventory();
 	}
 
@@ -366,13 +365,7 @@ public final class AudioService extends Service
 			policy.idle();
 			return;
 		}
-		boolean headsetActive = false;
-		for (Map.Entry<String, String> profile : explicitProfiles.entrySet())
-			if (profile.getValue().equals("headset") && devices.communication(profile.getKey()) != null)
-				headsetActive = true;
-		for (StreamIo other : streams.values())
-			if (other.headset)
-				headsetActive = true;
+		boolean headsetActive = routes.requiresCommunication();
 		if (!headsetActive)
 			policy.releaseCommunication();
 		if (streams.isEmpty() && !headsetActive && !suspended)

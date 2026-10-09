@@ -150,3 +150,12 @@ and policy tests are separate from the installed-device MMAP results.
 See `diagnostics/android-routing/MMAP-PREFERENCE-20261010.md` for the policy
 evidence, live test gate, and a pre-existing intermittent short-file graph
 startup/drain failure reproduced with both 0.1.7 and the candidate.
+
+### 0.1.9 communication-route lifetime
+
+Headset profile selection no longer reserves an idle Android communication route.
+Actual headset playback/capture reservations own that route until their resources
+retire; the last one releases it even if Headset remains selected. This prevents
+the idle-owner lifecycle behind the observed stuck SCO / blocked stereo return.
+See `diagnostics/android-routing/SCO-LIFETIME-20261010.md` for the pinned framework
+analysis, regression tests and separate Quake latency measurements.

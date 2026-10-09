@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-10",
+  "helper_version": "0.1.8",
+  "quake_pid": 26862,
+  "quake_executable_sha256": "837fca8536334400eba961443aa3e0d7bf742bbf2b53dba803b263b471ec5096",
+  "output": "Bluetooth stereo, device 38, native MMAP",
+  "duration_seconds": 30,
+  "shared_ring_ms": {
+    "min": 10.0,
+    "median": 22.041666666666668,
+    "p95": 24.854166666666668,
+    "max": 25.229166666666668
+  },
+  "aaudio_accepted_minus_read_ms": {
+    "min": 0.0,
+    "median": 4.0,
+    "p95": 4.0,
+    "max": 14.0
+  },
+  "ring_plus_aaudio_ms": {
+    "min": 14.0,
+    "median": 26.020833333333332,
+    "p95": 28.854166666666668,
+    "max": 31.020833333333336
+  },
+  "aaudio_xruns_start": 2,
+  "aaudio_xruns_end": 2,
+  "quake_live_cvars": {
+    "s_mixahead": "0.2",
+    "s_mixPreStep": "0.05"
+  },
+  "quake_dma": {
+    "channels": 2,
+    "samples": 10240,
+    "fullsamples": 5120,
+    "submission_chunk": 1,
+    "samplebits": 16,
+    "isfloat": 0,
+    "speed": 22050
+  },
+  "quake_painted_ahead_ms": {
+    "min": 49.97732426303855,
+    "median": 169.97732426303855,
+    "p95": 200.0,
+    "max": 200.0
+  },
+  "limitations": [
+    "Passive counter snapshots, not acoustic latency",
+    "Shared ring excludes additional upstream PipeWire/transport FIFOs",
+    "AAudio read position does not include independently calibrated Bluetooth codec/headset delay",
+    "Game counters sampled separately from shared ring; do not sum percentiles as a measured end-to-end result",
+    "No game settings changed; no microphone PCM recorded"
+  ]
+}

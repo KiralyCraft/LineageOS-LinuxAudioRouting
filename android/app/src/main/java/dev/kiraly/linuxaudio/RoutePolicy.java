@@ -14,11 +14,13 @@ final class RoutePolicy
 		final String endpoint;
 		final String resource;
 		final String name;
-		Claim(String endpoint, String resource, String name)
+		final boolean headset;
+		Claim(String endpoint, String resource, String name, boolean headset)
 		{
 			this.endpoint = endpoint;
 			this.resource = resource;
 			this.name = name;
+			this.headset = headset;
 		}
 	}
 
@@ -32,14 +34,26 @@ final class RoutePolicy
 		return "";
 	}
 
-	synchronized void reserve(long id, String endpoint, String resource, String name) throws IOException
+	synchronized void reserve(long id, String endpoint, String resource, String name, boolean headset) throws IOException
 	{
 		if (claims.containsKey(id))
 			throw new IOException("Duplicate stream reservation");
 		for (Claim claim : claims.values())
 			if (claim.resource.equals(resource))
 				throw new IOException("Audio path in use by " + claim.endpoint);
-		claims.put(id, new Claim(endpoint, resource, name));
+		claims.put(id, new Claim(endpoint, resource, name, headset));
+	}
+
+	/**
+	 * Profile preferences never own Android communication routing. Only
+	 * reservations whose streams have not retired can keep SCO alive.
+	 */
+	synchronized boolean requiresCommunication()
+	{
+		for (Claim claim : claims.values())
+			if (claim.headset)
+				return true;
+		return false;
 	}
 
 	synchronized void release(long id)
