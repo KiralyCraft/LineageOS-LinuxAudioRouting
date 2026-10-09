@@ -52,3 +52,24 @@ engine's actual `dma.speed=22050`. This is substantial game-side mixed-ahead
 buffering. SDL's output stream is 44.1 kHz; the bridge is 48 kHz. The game settings
 were not changed. The two measurement windows must not be added as if they were
 one correlated acoustic measurement. See `quake-018-latency-20261010.json`.
+
+## Installed validation
+
+0.1.9/code 10 was manually installed and started. The existing Linux bridge has
+the identical binary hash and remained running. Quake PID 26862 and its original
+playback/capture client IDs survived the update and route test.
+
+- Headset selected, no headset streams, eight seconds elapsed: SCO inactive,
+  MODE_NORMAL. The previous idle-selection ownership is gone.
+- Quake playback and capture moved to headset: SCO active, MODE_IN_COMMUNICATION.
+- Capture moved back to phone while headset playback continued: SCO stayed active.
+- Final headset playback moved away while Headset remained selected; after eight
+  seconds: SCO inactive, MODE_NORMAL, despite the continuing phone microphone.
+- Stereo profile selected: original Quake clients resumed stereo MMAP plus the
+  bottom phone microphone. SBC remained unchanged. Final MMAP snapshot: zero xruns.
+
+The eight-second waits cross Android's six-second inactive-client check as a test
+condition; there is no corresponding production sleep or recovery timer. Explicit
+profile change intentionally revoked the old stereo channel (logged EOF code 21),
+and one inventory-race admission retried successfully. No stale SCO recovery
+profile toggle was needed. See `live-019-20261010.json` for recorded transitions.

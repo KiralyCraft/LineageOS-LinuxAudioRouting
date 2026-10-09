@@ -1,0 +1,64 @@
+{
+  "date": "2026-10-10",
+  "helper_version": "0.1.9",
+  "version_code": 10,
+  "fix_commit": "2103b97",
+  "apk_sha256": "8459966bb3ea4c8173b71efbe72e8bf902d93f4616984050caf3742a35980caa",
+  "quake_pid_preserved": 26862,
+  "events": [
+    {
+      "label": "idle-headset-selection",
+      "sco": "SCO_STATE_INACTIVE",
+      "mode": "AudioModeInfo: mMode=MODE_NORMAL, mPid=0, mUid=0",
+      "t": 21155.545972606
+    },
+    {
+      "label": "duplex-headset",
+      "sco": "SCO_STATE_ACTIVE_INTERNAL",
+      "mode": "AudioModeInfo: mMode=MODE_IN_COMMUNICATION, mPid=9689, mUid=10296",
+      "t": 21158.814689324
+    },
+    {
+      "label": "playback-still-owns",
+      "sco": "SCO_STATE_ACTIVE_INTERNAL",
+      "mode": "AudioModeInfo: mMode=MODE_IN_COMMUNICATION, mPid=9689, mUid=10296",
+      "t": 21159.994438594
+    },
+    {
+      "label": "last-headset-retired",
+      "sco": "SCO_STATE_INACTIVE",
+      "mode": "AudioModeInfo: mMode=MODE_NORMAL, mPid=0, mUid=0",
+      "t": 21168.150323278
+    },
+    {
+      "label": "stereo-return",
+      "sco": "SCO_STATE_INACTIVE",
+      "mode": "AudioModeInfo: mMode=MODE_NORMAL, mPid=0, mUid=0",
+      "t": 21171.2506551
+    },
+    {
+      "result": "PASS",
+      "quake_streams_preserved": true
+    }
+  ],
+  "native_ready": [
+    "Shared PCM AAudio stream=7806 device=38 prefer_mmap=true mmap=true",
+    "Shared PCM AAudio stream=7811 device=23 prefer_mmap=true mmap=false",
+    "Shared PCM AAudio stream=7818 device=43 prefer_mmap=false mmap=false",
+    "Shared PCM AAudio stream=7823 device=48 prefer_mmap=false mmap=false",
+    "Shared PCM AAudio stream=7828 device=23 prefer_mmap=true mmap=false",
+    "Shared PCM AAudio stream=7835 device=38 prefer_mmap=true mmap=true"
+  ],
+  "final_route": {
+    "output": "Bluetooth stereo device 38; MMAP",
+    "input": "Phone microphone bottom device 23",
+    "codec": "SBC 44100Hz 16-bit stereo",
+    "sco": "INACTIVE"
+  },
+  "diagnostics": [
+    "Explicit Headset selection retired the existing stereo channel; bridge reported EOF code 21 for that deliberate retirement",
+    "One stale-inventory admission was retried successfully",
+    "Final stereo MMAP stream showed zero xruns at the final snapshot",
+    "Profile transitions interrupt audio; this change does not claim seamless handoff or acoustic latency improvement"
+  ]
+}
