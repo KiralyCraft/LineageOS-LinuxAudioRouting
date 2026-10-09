@@ -1,0 +1,105 @@
+{
+  "profile-low-repeat": {
+    "median_ms": 262.615,
+    "samples": 7,
+    "last": {
+      "expected": "38",
+      "actual": "38",
+      "rate": "48000",
+      "sent": "168480",
+      "head": "167616",
+      "capacity": "15376",
+      "size": "960",
+      "underruns": "0",
+      "timestamp_valid": "true",
+      "timestamp_frame": "155856",
+      "timestamp_ns": "17205775365155",
+      "now_ns": "17205775852759"
+    }
+  },
+  "profile-low": {
+    "median_ms": 262.642,
+    "samples": 7,
+    "last": {
+      "expected": "38",
+      "actual": "38",
+      "rate": "48000",
+      "sent": "168480",
+      "head": "167616",
+      "capacity": "3844",
+      "size": "960",
+      "underruns": "0",
+      "timestamp_valid": "true",
+      "timestamp_frame": "155856",
+      "timestamp_ns": "17023182023922",
+      "now_ns": "17023182366318"
+    }
+  },
+  "profile-normal": {
+    "median_ms": 377.866,
+    "samples": 7,
+    "last": {
+      "expected": "38",
+      "actual": "38",
+      "rate": "48000",
+      "sent": "168480",
+      "head": "167520",
+      "capacity": "3844",
+      "size": "1920",
+      "underruns": "1",
+      "timestamp_valid": "true",
+      "timestamp_frame": "149808",
+      "timestamp_ns": "17018424382361",
+      "now_ns": "17018435516111"
+    }
+  },
+  "profile-power-repeat": {
+    "median_ms": 368.223,
+    "samples": 9,
+    "last": {
+      "expected": "38",
+      "actual": "38",
+      "rate": "48000",
+      "sent": "192480",
+      "head": "192000",
+      "capacity": "15376",
+      "size": "1920",
+      "underruns": "1",
+      "timestamp_valid": "true",
+      "timestamp_frame": "174288",
+      "timestamp_ns": "17210719830413",
+      "now_ns": "17210730607653"
+    }
+  },
+  "profile-power": {
+    "median_ms": 477.356,
+    "samples": 8,
+    "last": {
+      "expected": "38",
+      "actual": "38",
+      "rate": "48000",
+      "sent": "192480",
+      "head": "191040",
+      "capacity": "19220",
+      "size": "1920",
+      "underruns": "1",
+      "timestamp_valid": "true",
+      "timestamp_frame": "168528",
+      "timestamp_ns": "17013767665801",
+      "now_ns": "17013779938874"
+    }
+  },
+  "aaudio": {
+    "requested_sharing": "shared",
+    "device": 38,
+    "mmap_observed": true,
+    "actual_route": "AUDIO_DEVICE_OUT_BLUETOOTH_A2DP",
+    "client_format": "float32 stereo 48000",
+    "hardware_format": "s16 stereo 48000",
+    "burst_frames": 96,
+    "buffer_frames": 192,
+    "xruns": 0,
+    "runs": 2,
+    "scope": "root silence probe, not ordinary helper or acoustic measurement"
+  }
+}
