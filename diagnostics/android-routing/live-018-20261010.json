@@ -1,0 +1,134 @@
+{
+  "version": "0.1.8",
+  "source_commit": "af5efb2",
+  "date": "2026-10-10",
+  "apk_sha256": "03d0f76686ab0a0c3bf155801d8030361f09fd8416709b7469988d9ea1ef7761",
+  "bridge_sha256": "f772b532532e17245845476228a09b71b1463afebc48820a80b5ad5354559656",
+  "configurations": {
+    "stereo": {
+      "defaults": {
+        "sink": "output.8.b50587de8e48120d007bdae3",
+        "source": "input.15.be9b7607e070383c083b082c"
+      },
+      "microphone": {
+        "frames": 547840,
+        "nonzero": 541980,
+        "peak": 0.00039768218994140625
+      },
+      "clients": [
+        {
+          "exit": 0,
+          "error": ""
+        },
+        {
+          "exit": 0,
+          "error": ""
+        }
+      ],
+      "directions": {
+        "output": {
+          "mmap": [
+            true
+          ],
+          "errors": [
+            0
+          ],
+          "max_xruns": 0,
+          "observations": 917
+        },
+        "input": {
+          "mmap": [
+            false
+          ],
+          "errors": [
+            0
+          ],
+          "max_xruns": 0,
+          "observations": 1050
+        }
+      }
+    },
+    "headset": {
+      "defaults": {
+        "sink": "output.7.b50587de8e48120d007bdae3",
+        "source": "input.7.b50587de8e48120d007bdae3"
+      },
+      "microphone": {
+        "frames": 567296,
+        "nonzero": 483845,
+        "peak": 0.001978945918381214
+      },
+      "clients": [
+        {
+          "exit": 0,
+          "error": ""
+        },
+        {
+          "exit": 0,
+          "error": ""
+        }
+      ],
+      "directions": {
+        "output": {
+          "mmap": [
+            false
+          ],
+          "errors": [
+            0
+          ],
+          "max_xruns": 1,
+          "observations": 932
+        },
+        "input": {
+          "mmap": [
+            false
+          ],
+          "errors": [
+            0
+          ],
+          "max_xruns": 0,
+          "observations": 1098
+        }
+      }
+    }
+  },
+  "secondary_first": {
+    "error": "",
+    "clients": [
+      {
+        "device": "linux-audio.output.2.964222d73e202407d6c9693d",
+        "exit": 0,
+        "error": ""
+      },
+      {
+        "device": "linux-audio.output.8.b50587de8e48120d007bdae3",
+        "exit": 0,
+        "error": ""
+      }
+    ]
+  },
+  "ready_events": [
+    "Shared PCM AAudio stream=7745 device=38 prefer_mmap=true mmap=true",
+    "Shared PCM AAudio stream=7750 device=23 prefer_mmap=true mmap=false",
+    "Shared PCM AAudio stream=7763 device=43 prefer_mmap=true mmap=false",
+    "Shared PCM AAudio stream=7758 device=48 prefer_mmap=true mmap=false",
+    "Shared PCM AAudio stream=7770 device=3 prefer_mmap=false mmap=false",
+    "Shared PCM AAudio stream=7785 device=3 prefer_mmap=false mmap=false",
+    "Shared PCM AAudio stream=7790 device=38 prefer_mmap=true mmap=true"
+  ],
+  "phone_capture_mmap_failure": "Qualcomm PAL createMmapBuffer: stream type 9 flags 0; AAudio createMmapBuffer failed -38 Function not implemented. Current requested raw capture path fell back successfully.",
+  "profile_return_issue": "After headset test, Android reported no communication routing client and MODE_NORMAL but retained SCO_STATE_ACTIVE_INTERNAL. A2DP MMAP failed while suspended; fallback was rerouted device 38 to 3 and disconnected. Reapplying owned headset then stereo selection yielded SCO_STATE_INACTIVE. Subsequent speaker-first/stereo-second playback completed; stereo used MMAP. No timer or framework policy workaround added.",
+  "final_state": {
+    "default_output": "Bluetooth stereo headphones",
+    "default_input": "Phone microphone bottom",
+    "codec": "SBC 44100Hz 16-bit stereo",
+    "owned_test_streams": 0,
+    "phone_audio_service_restarted": false
+  },
+  "limitations": [
+    "No acoustic latency measurement or subjective listening confirmation",
+    "One headset playback xrun observed",
+    "Intermittent short-file graph block loss also reproduced with unchanged 0.1.7; separate from exact-byte native transport",
+    "Headset-to-stereo lifecycle issue recovered but not fixed"
+  ]
+}

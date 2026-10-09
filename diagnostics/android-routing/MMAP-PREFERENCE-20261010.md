@@ -45,10 +45,33 @@ transport tests retained the exact 20000-byte pattern and final partial packet.
 Evidence is retained under `/tmp/linux-audio-route-debug/` in
 `mmap-test-first-failure/` and `baseline017-current-fixture.log`.
 
-## Physical test gate
+## Installed-device results
 
-After manual APK installation and Start: test default stereo headphones plus
-bottom phone microphone, then default headset playback plus headset microphone.
-Inspect actual native MMAP status independently for both directions, preserve
-SBC, and restore stereo plus bottom microphone afterwards. No acoustic latency
-or successful installed-0.1.8 result is claimed here.
+Manual installation of 0.1.8/code 9 and Start completed. Both default pairs were
+tested with playback and concurrent capture; Android verified the selected
+physical routes, playback clients completed, and microphones returned nonzero
+samples. Actual shared-header and native-ready results:
+
+| Defaults | Output MMAP | Input MMAP |
+| --- | --- | --- |
+| Stereo headphones + bottom phone microphone | Yes | No |
+| Headset + headset microphone | No | No |
+
+Both directions requested MMAP preference. Qualcomm PAL rejected MMAP buffer
+creation for the requested raw phone capture path with -38 (Function not
+implemented), and AAudio fell back successfully. The headset playback test
+reported one xrun; other sampled streams reported zero. This is not an acoustic
+latency measurement or subjective listening result.
+
+The first return to stereo exposed a separate lifecycle problem: AudioService
+had no communication routing clients and was in MODE_NORMAL, but Bluetooth kept
+SCO_STATE_ACTIVE_INTERNAL. PAL then rejected A2DP startup in suspended state;
+the legacy fallback was rerouted from device 38 to 3 and disconnected. Reapplying
+owned headset then stereo selection cleared SCO. No timer or vendor-policy
+workaround was added. This recovery does not constitute a fix for that issue.
+
+After recovery, starting non-default speaker playback first gave it
+`prefer_mmap=false mmap=false`; default stereo opened second with
+`prefer_mmap=true mmap=true`. Both clients completed. Stereo plus bottom phone
+microphone remain selected; SBC remains 44.1 kHz, 16-bit stereo. All owned test
+streams ended. See `live-018-20261010.json` for measured counts and limitations.
