@@ -9,7 +9,9 @@ for name in ['apk','startup','desktop']:
     test=build/'tests'/(name+'.log')
     if test.exists() and 'PASS ' in test.read_text():result['validation'][name]='PASS'
 physical=build/'tests/physical-microphone.json'
-if physical.exists():result['validation']['physical_microphone']=json.loads(physical.read_text())
+if physical.exists():
+    result['validation']['physical_microphone']=json.loads(physical.read_text())
+    result['validation']['physical_audio']='Partial: background phone/Bluetooth microphone verified; audible playback, calls, doze and long soak pending'
 log=build/'tests/integration.log'
 if log.exists() and 'PASS isolated production PipeWire/native stack' in log.read_text():
     result['validation']['isolated_pipewire']='PASS; simulated Android endpoints, production native binaries'
